@@ -14,6 +14,8 @@ export async function GET(request:Request){
   const to=validDate(u.searchParams.get("to"))?u.searchParams.get("to")!:`${year}-12-31`;
   if(!employeeId||to<from)return NextResponse.json({error:"Parámetros inválidos"},{status:400});
   const sql=db();
+  const officeSettings=(await sql`SELECT absence_count_start_date::text AS absence_count_start_date FROM office_settings WHERE id=1`)[0];
+  const absenceStart=String(officeSettings?.absence_count_start_date||'2026-09-12');
   const employee=(await sql`
     SELECT e.id,e.last_name,e.first_name,e.dni,e.employment,e.active,e.seniority_date::text,e.seniority_notes,
       CASE WHEN e.seniority_date IS NULL THEN NULL ELSE EXTRACT(YEAR FROM age(current_date,e.seniority_date))::int END AS seniority_years,
@@ -44,9 +46,9 @@ export async function GET(request:Request){
       FROM dates dt
       LEFT JOIN employee_schedules s ON s.employee_id=${employeeId} AND s.weekday=EXTRACT(ISODOW FROM dt.work_date)::int
       LEFT JOIN attendance_days ad ON ad.employee_id=${employeeId} AND ad.work_date=dt.work_date
-      WHERE s.employee_id IS NOT NULL OR ad.id IS NOT NULL OR EXISTS (
+      WHERE ad.id IS NOT NULL OR EXISTS (
         SELECT 1 FROM leave_records l WHERE l.employee_id=${employeeId} AND l.active=TRUE AND dt.work_date BETWEEN l.date_from AND l.date_to
-      )
+      ) OR (s.employee_id IS NOT NULL AND dt.work_date >= ${absenceStart}::date)
     )
     SELECT b.work_date::text,
       left(COALESCE(b.actual_start,b.schedule_start)::text,5) AS scheduled_start,
@@ -92,5 +94,5 @@ export async function GET(request:Request){
     totalRecords:l.length
   };
   const entitlements=await sql`SELECT benefit_year,seniority_years,service_months,entitlement_days,notes FROM vacation_entitlements WHERE employee_id=${employeeId} ORDER BY benefit_year DESC`;
-  return NextResponse.json({employee,from,to,summary,leaveSummary,leaves,attendance,entitlements});
+  return NextResponse.json({employee,from,to,absenceStartDate:absenceStart,summary,leaveSummary,leaves,attendance,entitlements});
 }

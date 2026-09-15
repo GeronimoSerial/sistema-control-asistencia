@@ -32,6 +32,10 @@ export async function ensureV13Schema(){
   await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS temporary_pin_expires_at TIMESTAMPTZ`;
   await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS seniority_date DATE`;
   await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS seniority_notes TEXT`;
+  // V1.22.1: inicio oficial del cómputo de inasistencias.
+  // No se generan ni contabilizan inasistencias hasta el 11/09/2026 inclusive.
+  await sql`ALTER TABLE office_settings ADD COLUMN IF NOT EXISTS absence_count_start_date DATE`;
+  await sql`UPDATE office_settings SET absence_count_start_date='2026-09-12'::date,updated_at=now() WHERE id=1 AND absence_count_start_date IS DISTINCT FROM '2026-09-12'::date`;
   // V1.22: tolerancia oficial de ingreso fijada en 15 minutos.
   await sql`UPDATE office_settings SET lateness_tolerance_minutes=15,updated_at=now() WHERE id=1 AND lateness_tolerance_minutes<>15`;
   await sql`CREATE TABLE IF NOT EXISTS employee_devices (
@@ -82,25 +86,51 @@ export async function ensureV13Schema(){
     id BIGSERIAL PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('ADMIN','LICENSE_OPERATOR','ATTENDANCE_OPERATOR')),
+    role TEXT NOT NULL DEFAULT 'CUSTOM',
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_by TEXT,
     last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
-  // V1.22: nuevo rol restringido para registrar marcaciones excepcionales.
-  await sql`DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='app_users_role_check') THEN
-      ALTER TABLE app_users DROP CONSTRAINT app_users_role_check;
-    END IF;
+  // V1.23: permisos múltiples por usuario. El campo role se conserva por compatibilidad,
+  // pero las autorizaciones operativas se resuelven desde app_user_permissions.
+  await sql`DO $$ DECLARE c RECORD; BEGIN
+    FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='app_users'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%role%' LOOP
+      EXECUTE format('ALTER TABLE app_users DROP CONSTRAINT %I',c.conname);
+    END LOOP;
   END $$`;
   await sql`DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='app_users_role_v122_chk') THEN
-      ALTER TABLE app_users ADD CONSTRAINT app_users_role_v122_chk
-      CHECK(role IN ('ADMIN','LICENSE_OPERATOR','ATTENDANCE_OPERATOR'));
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='app_users_role_v123_chk') THEN
+      ALTER TABLE app_users ADD CONSTRAINT app_users_role_v123_chk
+      CHECK(role IN ('ADMIN','LICENSE_OPERATOR','ATTENDANCE_OPERATOR','CUSTOM'));
     END IF;
   END $$`;
+  await sql`CREATE TABLE IF NOT EXISTS app_permissions (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS app_user_permissions (
+    user_id BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    permission_code TEXT NOT NULL REFERENCES app_permissions(code) ON DELETE CASCADE,
+    granted_by TEXT,
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(user_id,permission_code)
+  )`;
+  await sql`INSERT INTO app_permissions(code,name,description) VALUES
+    ('LICENSES','Operador de Licencias','Registrar y consultar licencias, vacaciones, saldos e historial de licencias.'),
+    ('ATTENDANCE','Operador de Asistencia','Consultar registros y realizar marcaciones manuales excepcionales.')
+    ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,active=TRUE`;
+  // Migración automática de usuarios existentes: conserva los permisos que ya tenían por rol.
+  await sql`INSERT INTO app_user_permissions(user_id,permission_code,granted_by)
+    SELECT id,'LICENSES','MIGRACION_V1.23' FROM app_users WHERE role IN ('ADMIN','LICENSE_OPERATOR')
+    ON CONFLICT DO NOTHING`;
+  await sql`INSERT INTO app_user_permissions(user_id,permission_code,granted_by)
+    SELECT id,'ATTENDANCE','MIGRACION_V1.23' FROM app_users WHERE role IN ('ADMIN','ATTENDANCE_OPERATOR')
+    ON CONFLICT DO NOTHING`;
 
   await sql`CREATE TABLE IF NOT EXISTS vacation_entitlements (
     id BIGSERIAL PRIMARY KEY,

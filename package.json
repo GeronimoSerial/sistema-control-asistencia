@@ -1,6 +1,6 @@
 {
   "name": "sistema-control-asistencia-dge",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

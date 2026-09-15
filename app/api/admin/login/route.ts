@@ -8,5 +8,5 @@ export async function POST(request: Request) {
   const user = await authenticateUser(String(body.email || ""), String(body.password || ""));
   if (!user) return NextResponse.json({ error: "Correo o contraseña incorrectos." }, { status: 401 });
   await setAdminSession(user.email,user.role,user.userId);
-  return NextResponse.json({ ok:true, role:user.role });
+  return NextResponse.json({ ok:true, role:user.role, permissions:user.permissions });
 }

@@ -4,7 +4,8 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 
 const COOKIE_NAME = "dge_admin_session";
-export type AppRole = "ADMIN" | "LICENSE_OPERATOR" | "ATTENDANCE_OPERATOR";
+export type AppRole = "ADMIN" | "LICENSE_OPERATOR" | "ATTENDANCE_OPERATOR" | "CUSTOM";
+export type AppPermission = "LICENSES" | "ATTENDANCE";
 
 function authKey() {
   const secret = process.env.AUTH_SECRET;
@@ -29,28 +30,51 @@ export async function getAdminSession() {
   try {
     const store = await cookies(); const token = store.get(COOKIE_NAME)?.value; if (!token) return null;
     const { payload } = await jwtVerify(token, authKey());
-    if ((payload.role !== "ADMIN" && payload.role !== "LICENSE_OPERATOR" && payload.role !== "ATTENDANCE_OPERATOR") || typeof payload.email !== "string") return null;
-    return { email:payload.email, role:payload.role as AppRole, userId: typeof payload.userId === "number" ? payload.userId : null };
+    if (typeof payload.email !== "string") return null;
+    const role = String(payload.role || "") as AppRole;
+    if (!(["ADMIN","LICENSE_OPERATOR","ATTENDANCE_OPERATOR","CUSTOM"] as string[]).includes(role)) return null;
+    const userId = typeof payload.userId === "number" ? payload.userId : null;
+
+    // La cuenta administradora definida por variables de entorno conserva acceso total.
+    if (role === "ADMIN" && userId === null) {
+      return { email:payload.email, role, userId:null, permissions:["LICENSES","ATTENDANCE"] as AppPermission[] };
+    }
+
+    // Los permisos se leen en cada solicitud para que una edición tenga efecto inmediato,
+    // sin obligar al usuario a cerrar sesión y volver a ingresar.
+    if (userId !== null) {
+      const sql=db();
+      const user=(await sql`SELECT id,email,role,active FROM app_users WHERE id=${userId} LIMIT 1`)[0];
+      if(!user || !user.active) return null;
+      const permissions=(await sql`SELECT p.code FROM app_user_permissions up JOIN app_permissions p ON p.code=up.permission_code WHERE up.user_id=${userId} AND p.active=TRUE ORDER BY p.code`).map((r:any)=>String(r.code)) as AppPermission[];
+      return { email:String(user.email), role:String(user.role) as AppRole, userId:Number(user.id), permissions };
+    }
+
+    return null;
   } catch { return null; }
 }
 
 type Session = Awaited<ReturnType<typeof getAdminSession>>;
 type NonNullSession = NonNullable<Session>;
 export function isAdmin(session: Session): session is NonNullSession & { role: "ADMIN" } { return session?.role === "ADMIN"; }
-export function canManageLicenses(session: Session): session is NonNullSession { return Boolean(session && (session.role === "ADMIN" || session.role === "LICENSE_OPERATOR")); }
-export function canManageAttendance(session: Session): session is NonNullSession { return Boolean(session && (session.role === "ADMIN" || session.role === "ATTENDANCE_OPERATOR")); }
+export function hasPermission(session: Session, permission: AppPermission): session is NonNullSession {
+  return Boolean(session && (session.role === "ADMIN" || session.permissions?.includes(permission)));
+}
+export function canManageLicenses(session: Session): session is NonNullSession { return hasPermission(session,"LICENSES"); }
+export function canManageAttendance(session: Session): session is NonNullSession { return hasPermission(session,"ATTENDANCE"); }
 
-export async function authenticateUser(email: string, password: string): Promise<{email:string;role:AppRole;userId:number|null}|null> {
+export async function authenticateUser(email: string, password: string): Promise<{email:string;role:AppRole;userId:number|null;permissions:AppPermission[]}|null> {
   const normalized=email.trim().toLowerCase();
   const expectedEmail=process.env.ADMIN_EMAIL?.trim().toLowerCase(); const expectedPassword=process.env.ADMIN_PASSWORD;
-  if (expectedEmail && expectedPassword && normalized === expectedEmail && password === expectedPassword) return {email:expectedEmail,role:"ADMIN",userId:null};
+  if (expectedEmail && expectedPassword && normalized === expectedEmail && password === expectedPassword) return {email:expectedEmail,role:"ADMIN",userId:null,permissions:["LICENSES","ATTENDANCE"]};
   try {
     const sql=db();
     const row=(await sql`SELECT id,email,password_hash,role,active FROM app_users WHERE lower(email)=lower(${normalized}) LIMIT 1`)[0];
-    if(!row || !row.active || (row.role!=="ADMIN" && row.role!=="LICENSE_OPERATOR" && row.role!=="ATTENDANCE_OPERATOR")) return null;
+    if(!row || !row.active || !(["ADMIN","LICENSE_OPERATOR","ATTENDANCE_OPERATOR","CUSTOM"] as string[]).includes(String(row.role))) return null;
     if(!(await bcrypt.compare(password,String(row.password_hash)))) return null;
     await sql`UPDATE app_users SET last_login_at=now(),updated_at=now() WHERE id=${Number(row.id)}`;
-    return {email:String(row.email),role:row.role as AppRole,userId:Number(row.id)};
+    const permissions=(await sql`SELECT p.code FROM app_user_permissions up JOIN app_permissions p ON p.code=up.permission_code WHERE up.user_id=${Number(row.id)} AND p.active=TRUE ORDER BY p.code`).map((r:any)=>String(r.code)) as AppPermission[];
+    return {email:String(row.email),role:row.role as AppRole,userId:Number(row.id),permissions};
   } catch { return null; }
 }
 

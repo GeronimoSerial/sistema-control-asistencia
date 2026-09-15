@@ -58,3 +58,11 @@ Generación masiva de PIN provisorios para agentes activos sin PIN, con vencimie
 
 ## V1.21
 Se incorpora secuencia de movimientos múltiples por jornada: Entrada → Salida → Reingreso → Salida. Las salidas intermedias quedan pendientes de clasificación por Administración, que puede asignar motivo, observación y definir si el intervalo computa como tiempo trabajado. El legajo muestra la secuencia completa.
+
+
+## V1.22.1 — Inicio oficial del cómputo de inasistencias
+Las inasistencias se contabilizan desde el 12/09/2026. Los días hasta el 11/09/2026 inclusive no generan ausencias históricas. Las marcaciones y licencias reales anteriores se conservan.
+
+
+## V1.23
+Permisos múltiples y editables por usuario. Un usuario puede combinar Licencias y Asistencia; preparado para nuevos permisos futuros.

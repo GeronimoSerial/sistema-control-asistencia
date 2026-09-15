@@ -26,7 +26,8 @@ export default function AdminLoginPage() {
       return;
     }
     const body = await res.json().catch(() => ({}));
-    router.push(body.role === "LICENSE_OPERATOR" ? "/admin/novedades" : body.role === "ATTENDANCE_OPERATOR" ? "/admin/registros" : "/admin");
+    const permissions=Array.isArray(body.permissions)?body.permissions:[];
+    router.push(body.role === "ADMIN" ? "/admin" : permissions.includes("LICENSES") ? "/admin/novedades" : permissions.includes("ATTENDANCE") ? "/admin/registros" : "/admin");
     router.refresh();
   }
 
@@ -36,7 +37,7 @@ export default function AdminLoginPage() {
         <div>
           <div className="brand-kicker">Dirección de Gestión Escolar</div>
           <h1 className="heading">Acceso al sistema</h1>
-          <p className="subheading">Ingresá con tu usuario autorizado. El acceso y las opciones dependen del rol asignado.</p>
+          <p className="subheading">Ingresá con tu usuario autorizado. El acceso y las opciones dependen de los permisos asignados.</p>
         </div>
         <form className="stack" onSubmit={submit}>
           <div>
