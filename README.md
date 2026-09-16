@@ -66,3 +66,6 @@ Las inasistencias se contabilizan desde el 12/09/2026. Los días hasta el 11/09/
 
 ## V1.23
 Permisos múltiples y editables por usuario. Un usuario puede combinar Licencias y Asistencia; preparado para nuevos permisos futuros.
+
+## V1.25 - Restablecimiento de contraseña
+El Administrador puede asignar contraseñas temporales a usuarios y exigir su cambio en el próximo ingreso. Los usuarios existentes no son afectados por la migración.
