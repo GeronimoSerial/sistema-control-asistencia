@@ -22,6 +22,8 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, []);
 
+  const filteredRows = useMemo(() => (data?.rows || []).filter((r:any) => `${r.name || ""} ${r.dni || ""}`.toLowerCase().includes(q.trim().toLowerCase())), [data?.rows, q]);
+
   if (!data) return <div className="card">Cargando resumen…</div>;
   if (!data.ready) {
     return (
@@ -38,7 +40,6 @@ export default function DashboardPage() {
   }
 
   const t = data.totals || {};
-  const filteredRows = useMemo(() => (data.rows || []).filter((r:any) => `${r.name || ""} ${r.dni || ""}`.toLowerCase().includes(q.trim().toLowerCase())), [data.rows, q]);
   return (
     <div className="stack">
       <div className="row">
