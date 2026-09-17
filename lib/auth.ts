@@ -37,17 +37,17 @@ export async function getAdminSession() {
 
     // La cuenta administradora definida por variables de entorno conserva acceso total.
     if (role === "ADMIN" && userId === null) {
-      return { email:payload.email, role, userId:null, permissions:["LICENSES","ATTENDANCE"] as AppPermission[] };
+      return { email:payload.email, role, userId:null, permissions:["LICENSES","ATTENDANCE"] as AppPermission[], mustChangePassword:false };
     }
 
     // Los permisos se leen en cada solicitud para que una edición tenga efecto inmediato,
     // sin obligar al usuario a cerrar sesión y volver a ingresar.
     if (userId !== null) {
       const sql=db();
-      const user=(await sql`SELECT id,email,role,active FROM app_users WHERE id=${userId} LIMIT 1`)[0];
+      const user=(await sql`SELECT id,email,role,active,must_change_password FROM app_users WHERE id=${userId} LIMIT 1`)[0];
       if(!user || !user.active) return null;
       const permissions=(await sql`SELECT p.code FROM app_user_permissions up JOIN app_permissions p ON p.code=up.permission_code WHERE up.user_id=${userId} AND p.active=TRUE ORDER BY p.code`).map((r:any)=>String(r.code)) as AppPermission[];
-      return { email:String(user.email), role:String(user.role) as AppRole, userId:Number(user.id), permissions };
+      return { email:String(user.email), role:String(user.role) as AppRole, userId:Number(user.id), permissions, mustChangePassword:Boolean(user.must_change_password) };
     }
 
     return null;
@@ -63,18 +63,18 @@ export function hasPermission(session: Session, permission: AppPermission): sess
 export function canManageLicenses(session: Session): session is NonNullSession { return hasPermission(session,"LICENSES"); }
 export function canManageAttendance(session: Session): session is NonNullSession { return hasPermission(session,"ATTENDANCE"); }
 
-export async function authenticateUser(email: string, password: string): Promise<{email:string;role:AppRole;userId:number|null;permissions:AppPermission[]}|null> {
+export async function authenticateUser(email: string, password: string): Promise<{email:string;role:AppRole;userId:number|null;permissions:AppPermission[];mustChangePassword:boolean}|null> {
   const normalized=email.trim().toLowerCase();
   const expectedEmail=process.env.ADMIN_EMAIL?.trim().toLowerCase(); const expectedPassword=process.env.ADMIN_PASSWORD;
-  if (expectedEmail && expectedPassword && normalized === expectedEmail && password === expectedPassword) return {email:expectedEmail,role:"ADMIN",userId:null,permissions:["LICENSES","ATTENDANCE"]};
+  if (expectedEmail && expectedPassword && normalized === expectedEmail && password === expectedPassword) return {email:expectedEmail,role:"ADMIN",userId:null,permissions:["LICENSES","ATTENDANCE"],mustChangePassword:false};
   try {
     const sql=db();
-    const row=(await sql`SELECT id,email,password_hash,role,active FROM app_users WHERE lower(email)=lower(${normalized}) LIMIT 1`)[0];
+    const row=(await sql`SELECT id,email,password_hash,role,active,must_change_password FROM app_users WHERE lower(email)=lower(${normalized}) LIMIT 1`)[0];
     if(!row || !row.active || !(["ADMIN","LICENSE_OPERATOR","ATTENDANCE_OPERATOR","CUSTOM"] as string[]).includes(String(row.role))) return null;
     if(!(await bcrypt.compare(password,String(row.password_hash)))) return null;
     await sql`UPDATE app_users SET last_login_at=now(),updated_at=now() WHERE id=${Number(row.id)}`;
     const permissions=(await sql`SELECT p.code FROM app_user_permissions up JOIN app_permissions p ON p.code=up.permission_code WHERE up.user_id=${Number(row.id)} AND p.active=TRUE ORDER BY p.code`).map((r:any)=>String(r.code)) as AppPermission[];
-    return {email:String(row.email),role:row.role as AppRole,userId:Number(row.id),permissions};
+    return {email:String(row.email),role:row.role as AppRole,userId:Number(row.id),permissions,mustChangePassword:Boolean(row.must_change_password)};
   } catch { return null; }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Dashboard = {
   ready: boolean;
@@ -12,6 +12,7 @@ type Dashboard = {
 
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
+  const [q, setQ] = useState("");
 
   async function load() {
     const res = await fetch("/api/admin/dashboard", { cache: "no-store" });
@@ -37,6 +38,7 @@ export default function DashboardPage() {
   }
 
   const t = data.totals || {};
+  const filteredRows = useMemo(() => (data.rows || []).filter((r:any) => `${r.name || ""} ${r.dni || ""}`.toLowerCase().includes(q.trim().toLowerCase())), [data.rows, q]);
   return (
     <div className="stack">
       <div className="row">
@@ -60,15 +62,18 @@ export default function DashboardPage() {
       </div>
 
       <div className="card">
-        <div className="row" style={{ marginBottom: 10 }}>
+        <div className="row" style={{ marginBottom: 10, alignItems:"center", flexWrap:"wrap" }}>
           <strong>Detalle del día</strong>
           <span className="muted">Las ausencias se determinan solo para quienes tenían prestación prevista y no poseen novedad cargada.</span>
+          <div className="spacer" />
+          <div style={{minWidth:280,maxWidth:380,flex:"1 1 280px"}}><input className="input" placeholder="Buscar por apellido, nombre o DNI" value={q} onChange={e=>setQ(e.target.value)} /></div>
+          {q&&<button type="button" className="btn btn-secondary" onClick={()=>setQ("")}>Limpiar</button>}
         </div>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Agente</th><th>Horario</th><th>Entrada</th><th>Estado</th><th>Salida</th><th>Compensación</th><th>Saldo</th></tr></thead>
             <tbody>
-              {(data.rows || []).map((r: any) => (
+              {filteredRows.map((r: any) => (
                 <tr key={r.employeeId}>
                   <td><strong>{r.name}</strong><div className="muted">DNI {r.dni}</div></td>
                   <td>{r.schedule}</td>

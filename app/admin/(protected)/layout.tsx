@@ -4,6 +4,7 @@ import { getAdminSession,hasPermission,isAdmin } from "@/lib/auth";
 
 export default async function ProtectedAdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getAdminSession(); if (!session) redirect("/admin/login");
+  if (session.mustChangePassword) redirect("/admin/cambiar-contrasena");
   const admin=isAdmin(session), licenses=hasPermission(session,"LICENSES"), attendance=hasPermission(session,"ATTENDANCE");
   const subtitle=admin?"Administración":licenses&&attendance?"Licencias + Asistencia":licenses?"Operador de Licencias":attendance?"Operador de Asistencia":"Usuario autorizado";
   return <>

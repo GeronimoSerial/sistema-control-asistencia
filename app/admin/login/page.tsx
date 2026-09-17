@@ -27,7 +27,7 @@ export default function AdminLoginPage() {
     }
     const body = await res.json().catch(() => ({}));
     const permissions=Array.isArray(body.permissions)?body.permissions:[];
-    router.push(body.role === "ADMIN" ? "/admin" : permissions.includes("LICENSES") ? "/admin/novedades" : permissions.includes("ATTENDANCE") ? "/admin/registros" : "/admin");
+    router.push(body.mustChangePassword ? "/admin/cambiar-contrasena" : body.role === "ADMIN" ? "/admin" : permissions.includes("LICENSES") ? "/admin/novedades" : permissions.includes("ATTENDANCE") ? "/admin/registros" : "/admin");
     router.refresh();
   }
 
@@ -50,6 +50,11 @@ export default function AdminLoginPage() {
           </div>
           {error && <div className="notice bad">{error}</div>}
           <button className="btn btn-primary" disabled={loading}>{loading ? "Ingresando…" : "Ingresar"}</button>
+          <details className="notice info">
+            <summary style={{cursor:"pointer",fontWeight:700}}>Olvidé mi contraseña</summary>
+            <div style={{marginTop:8}}>Solicitá al Administrador del sistema un restablecimiento. Se te asignará una contraseña temporal y el sistema podrá exigir que la cambies al próximo ingreso.</div>
+            <div className="muted" style={{marginTop:6}}>La cuenta administradora principal configurada en Vercel se recupera desde las variables ADMIN_EMAIL / ADMIN_PASSWORD.</div>
+          </details>
         </form>
       </div>
     </main>

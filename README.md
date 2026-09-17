@@ -69,3 +69,6 @@ Permisos múltiples y editables por usuario. Un usuario puede combinar Licencias
 
 ## V1.25 - Restablecimiento de contraseña
 El Administrador puede asignar contraseñas temporales a usuarios y exigir su cambio en el próximo ingreso. Los usuarios existentes no son afectados por la migración.
+
+## V1.25.1 - Consolidación V1.24 + V1.25
+Incluye el tablero resumen de Legajos y buscador del Resumen diario de V1.24 junto con el restablecimiento de contraseñas de V1.25.

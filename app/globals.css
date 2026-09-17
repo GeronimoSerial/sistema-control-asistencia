@@ -205,3 +205,5 @@ td { padding: 11px 10px; border-bottom: 1px solid #edf0f4; vertical-align: top; 
   .public-qr-box { min-height: 0; padding: 12px; }
   .public-qr-image { width: min(100%, 440px); }
 }
+.badge.danger{background:#fdecea;color:#b42318;border:1px solid #f7c9c4}
+.badge.good{background:#eef7e7;color:#426b13;border:1px solid #d7e9c8}

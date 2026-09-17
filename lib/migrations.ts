@@ -93,6 +93,8 @@ export async function ensureV13Schema(){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  // V1.25: permite exigir al usuario que reemplace una contraseña temporal.
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`;
   // V1.23: permisos múltiples por usuario. El campo role se conserva por compatibilidad,
   // pero las autorizaciones operativas se resuelven desde app_user_permissions.
   await sql`DO $$ DECLARE c RECORD; BEGIN
