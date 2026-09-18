@@ -7,10 +7,46 @@ import { ensureV13Schema } from "@/lib/migrations";
 const reasons=new Set(["PERSONAL","MEDICAL","COMMISSION","AUTHORIZED_PERMISSION","LEAVE_HOURS","UNJUSTIFIED","OTHER"]);
 const manualReasons=new Set(["BROKEN_PHONE","DEVICE_PROBLEM","SYSTEM_FAILURE","OTHER"]);
 const movementTypes=new Set(["ENTRY","EXIT","REENTRY"]);
+const correctionReasons=new Set(["GEOLOCATION","DEVICE_PROBLEM","SYSTEM_FAILURE","MISSED_MARK","ADMIN_AUTHORIZATION","OTHER"]);
+const editableMovementTypes=new Set(["ENTRY","EXIT","REENTRY","AUTO_EXIT"]);
 
 function validDate(v:string){return /^\d{4}-\d{2}-\d{2}$/.test(v)}
 function validTime(v:string){return /^([01]\d|2[0-3]):[0-5]\d$/.test(v)}
 function minutes(v:string){const [h,m]=v.slice(0,5).split(":").map(Number);return h*60+m}
+
+
+async function recalculateAttendanceDay(sql:any, dayId:number){
+  const day=(await sql`SELECT id,work_date::text,scheduled_start::text,scheduled_end::text,exit_type FROM attendance_days WHERE id=${dayId} LIMIT 1`)[0];
+  if(!day)return;
+  const events=await sql`
+    SELECT id,event_type,occurred_at,metadata,
+           to_char(occurred_at AT TIME ZONE 'America/Argentina/Buenos_Aires','HH24:MI') AS local_time
+    FROM attendance_events
+    WHERE attendance_day_id=${dayId} AND event_type IN ('ENTRY','EXIT','REENTRY','AUTO_EXIT')
+    ORDER BY occurred_at,id
+  `;
+  const entry=events.find((e:any)=>String(e.event_type)==='ENTRY');
+  if(!entry)return;
+  const toleranceRow=(await sql`SELECT lateness_tolerance_minutes FROM office_settings WHERE id=1 LIMIT 1`)[0];
+  const tolerance=Number(toleranceRow?.lateness_tolerance_minutes ?? 15);
+  const start=String(day.scheduled_start).slice(0,5);
+  const rawLate=Math.max(0,minutes(String(entry.local_time))-minutes(start));
+  const late=rawLate>tolerance?rawLate:0;
+  const last=events[events.length-1];
+  if(last && ['EXIT','AUTO_EXIT'].includes(String(last.event_type))){
+    const end=String(day.scheduled_end).slice(0,5);
+    const exitLocal=String(last.local_time);
+    const after=Math.max(0,minutes(exitLocal)-minutes(end));
+    const early=Math.max(0,minutes(end)-minutes(exitLocal));
+    const comp=Math.min(late,after);
+    const pending=Math.max(0,late-comp)+early;
+    await sql`UPDATE attendance_days SET entry_at=${entry.occurred_at},exit_at=${last.occurred_at},late_minutes=${late},early_minutes=${early},compensation_minutes=${comp},pending_minutes=${pending},updated_at=now() WHERE id=${dayId}`;
+  }else{
+    await sql`UPDATE attendance_days SET entry_at=${entry.occurred_at},exit_at=NULL,early_minutes=0,late_minutes=${late},compensation_minutes=0,pending_minutes=${late},updated_at=now() WHERE id=${dayId}`;
+  }
+  await sql`UPDATE attendance_intervals ai SET exited_at=ae.occurred_at,updated_at=now() FROM attendance_events ae WHERE ai.attendance_day_id=${dayId} AND ai.exit_event_id=ae.id`;
+  await sql`UPDATE attendance_intervals ai SET reentered_at=ae.occurred_at,updated_at=now() FROM attendance_events ae WHERE ai.attendance_day_id=${dayId} AND ai.reentry_event_id=ae.id`;
+}
 
 export async function GET(request:Request){
   await ensureV13Schema();
@@ -31,7 +67,12 @@ export async function GET(request:Request){
         'id',ae.id,'event_type',ae.event_type,
         'time',to_char(ae.occurred_at AT TIME ZONE 'America/Argentina/Buenos_Aires','HH24:MI'),
         'manual',COALESCE((ae.metadata->>'manual')::boolean,false),
-        'manual_reason',ae.metadata->>'manualReason','actor',ae.metadata->>'actor'
+        'manual_reason',ae.metadata->>'manualReason','actor',ae.metadata->>'actor',
+        'corrected',COALESCE((ae.metadata->>'corrected')::boolean,false),
+        'original_time',ae.metadata->>'originalLocalTime',
+        'correction_reason',ae.metadata->>'correctionReason',
+        'correction_note',ae.metadata->>'correctionNote',
+        'corrected_by',ae.metadata->>'correctedBy'
       ) ORDER BY ae.occurred_at,ae.id)
         FROM attendance_events ae WHERE ae.attendance_day_id=ad.id AND ae.event_type IN ('ENTRY','EXIT','REENTRY','AUTO_EXIT')),'[]'::json) AS movements,
       COALESCE((SELECT json_agg(json_build_object(
@@ -98,6 +139,45 @@ export async function POST(request:Request){
   }
   await writeAudit({actor:session!.email,action:"MANUAL_ATTENDANCE_MOVEMENT",entityType:"attendance_day",entityId:String(day.id),next:{employeeId,date,time,eventType,manualReason,note}});
   return NextResponse.json({ok:true,id:day.id});
+}
+
+
+export async function PUT(request:Request){
+  await ensureV13Schema();
+  const session=await getAdminSession();
+  if(!isAdmin(session))return NextResponse.json({error:"Solo el administrador puede corregir horarios de marcación."},{status:403});
+  const body=await request.json().catch(()=>({}));
+  const eventId=Number(body.eventId);const time=String(body.time||"");const reasonCode=String(body.reasonCode||"");const note=String(body.note||"").trim().slice(0,500);
+  if(!Number.isInteger(eventId)||eventId<=0||!validTime(time)||!correctionReasons.has(reasonCode))return NextResponse.json({error:"Complete una hora válida y el motivo de la corrección."},{status:400});
+  if(reasonCode==="OTHER"&&!note)return NextResponse.json({error:"Para 'Otro motivo' debe ingresar una observación."},{status:400});
+  const sql=db();
+  const event=(await sql`
+    SELECT ae.id,ae.attendance_day_id,ae.employee_id,ae.event_type,ae.occurred_at,ae.metadata,
+           ad.work_date::text,
+           to_char(ae.occurred_at AT TIME ZONE 'America/Argentina/Buenos_Aires','HH24:MI') AS local_time
+    FROM attendance_events ae JOIN attendance_days ad ON ad.id=ae.attendance_day_id
+    WHERE ae.id=${eventId} LIMIT 1
+  `)[0];
+  if(!event)return NextResponse.json({error:"Marcación no encontrada."},{status:404});
+  if(!editableMovementTypes.has(String(event.event_type)))return NextResponse.json({error:"Este movimiento no admite corrección horaria."},{status:409});
+
+  const movements=await sql`SELECT id,event_type,occurred_at FROM attendance_events WHERE attendance_day_id=${event.attendance_day_id} AND event_type IN ('ENTRY','EXIT','REENTRY','AUTO_EXIT') ORDER BY occurred_at,id`;
+  const index=movements.findIndex((m:any)=>Number(m.id)===eventId);
+  if(index<0)return NextResponse.json({error:"No se pudo ubicar la marcación dentro de la jornada."},{status:409});
+  const correctedAt=new Date(`${String(event.work_date).slice(0,10)}T${time}:00-03:00`);
+  if(Number.isNaN(correctedAt.getTime()))return NextResponse.json({error:"Hora de corrección inválida."},{status:400});
+  const previousMovement=index>0?movements[index-1]:null;
+  const nextMovement=index<movements.length-1?movements[index+1]:null;
+  if(previousMovement && correctedAt.getTime()<=new Date(previousMovement.occurred_at).getTime())return NextResponse.json({error:"La hora corregida debe ser posterior al movimiento anterior."},{status:409});
+  if(nextMovement && correctedAt.getTime()>=new Date(nextMovement.occurred_at).getTime())return NextResponse.json({error:"La hora corregida debe ser anterior al movimiento siguiente."},{status:409});
+
+  const currentMetadata=(event.metadata&&typeof event.metadata==='object')?event.metadata:{};
+  const nextMetadata={...currentMetadata,corrected:true,originalOccurredAt:currentMetadata.originalOccurredAt||event.occurred_at,originalLocalTime:currentMetadata.originalLocalTime||String(event.local_time),correctionReason:reasonCode,correctionNote:note||null,correctedBy:session!.email,correctedAt:new Date().toISOString()};
+  const occurred=`${String(event.work_date).slice(0,10)} ${time}:00`;
+  const updated=(await sql`UPDATE attendance_events SET occurred_at=(${occurred}::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires'),metadata=${JSON.stringify(nextMetadata)}::jsonb WHERE id=${eventId} RETURNING id,attendance_day_id,employee_id,event_type,occurred_at,metadata`)[0];
+  await recalculateAttendanceDay(sql,Number(event.attendance_day_id));
+  await writeAudit({actor:session!.email,action:"EDIT_ATTENDANCE_MOVEMENT_TIME",entityType:"attendance_event",entityId:String(eventId),previous:{...event},next:updated,reason:`${reasonCode}${note?` - ${note}`:""}`});
+  return NextResponse.json({ok:true,event:updated});
 }
 
 export async function PATCH(request:Request){
