@@ -29,7 +29,10 @@ export default async function PersonalPage({
        FROM people p
        ORDER BY p.active DESC, p.last_name, p.first_name`
     )
-    .all() as unknown as PersonRow[];
+    // Las filas de node:sqlite tienen prototipo nulo y React no las puede serializar
+    // hacia un componente de cliente; se normalizan acá.
+    .all()
+    .map((row) => ({ ...row })) as unknown as PersonRow[];
 
   return (
     <PersonalPanel

@@ -3,6 +3,7 @@ import { sessionWith } from "@/lib/session";
 import { definitionsByGroup } from "@/core/config/definitions";
 import { getSetting } from "@/core/config/store";
 import { mainLocation } from "@/lib/levels";
+import { plain } from "@/core/platform/sqlite";
 import ConfigPanel, { type Definition, type Policy } from "./ConfigPanel";
 
 export const dynamic = "force-dynamic";
@@ -46,9 +47,11 @@ export default async function ConfiguracionPage({
     }
   }
 
-  const policy = (db
-    .prepare(`SELECT * FROM attendance_policies WHERE is_default = 1`)
-    .get() as unknown as Policy | undefined) ?? null;
+  const policy = plain(
+    db.prepare(`SELECT * FROM attendance_policies WHERE is_default = 1`).get() as unknown as
+      | Policy
+      | undefined
+  );
 
   return (
     <ConfigPanel

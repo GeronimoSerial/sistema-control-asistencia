@@ -21,7 +21,8 @@ export default async function UsuariosPage({
               (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) AS permissions
        FROM roles r ORDER BY r.name`
     )
-    .all() as unknown as RoleOption[];
+    .all()
+    .map((row) => ({ ...row })) as unknown as RoleOption[];
 
   const rows = db
     .prepare(
@@ -32,7 +33,8 @@ export default async function UsuariosPage({
        FROM users u
        ORDER BY u.active DESC, u.email`
     )
-    .all() as unknown as UserRow[];
+    .all()
+    .map((row) => ({ ...row })) as unknown as UserRow[];
 
   return (
     <UsuariosPanel nivel={nivel} roles={roles} rows={rows} currentUserId={session.user.id} />

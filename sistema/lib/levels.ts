@@ -7,7 +7,7 @@
  * abrirían conexiones nuevas hasta agotar los descriptores de archivo.
  */
 
-import { openDatabase, type Db } from "@/core/platform/sqlite";
+import { openDatabase, plain, type Db } from "@/core/platform/sqlite";
 import { initLevel } from "@/core/migrations/level-schema";
 import {
   initPlatform,
@@ -111,9 +111,11 @@ export function resolveLevel(slug: string): ResolvedLevel | null {
 
 /** Sede principal del nivel. Por ahora el sistema opera con una sede activa por nivel. */
 export function mainLocation(db: Db) {
-  return (db
-    .prepare(`SELECT id, code, name, latitude, longitude FROM locations WHERE active = 1 ORDER BY code LIMIT 1`)
-    .get() as unknown as
-    | { id: string; code: string; name: string; latitude: number | null; longitude: number | null }
-    | undefined) ?? null;
+  return plain(
+    db
+      .prepare(`SELECT id, code, name, latitude, longitude FROM locations WHERE active = 1 ORDER BY code LIMIT 1`)
+      .get() as unknown as
+      | { id: string; code: string; name: string; latitude: number | null; longitude: number | null }
+      | undefined
+  );
 }

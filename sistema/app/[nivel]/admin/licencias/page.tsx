@@ -21,7 +21,8 @@ export default async function LicenciasPage({
       `SELECT id, last_name || ', ' || first_name AS label, national_id
        FROM people WHERE active = 1 ORDER BY last_name, first_name`
     )
-    .all() as unknown as Option[];
+    .all()
+    .map((row) => ({ ...row })) as unknown as Option[];
 
   const types: TypeOption[] = loadAbsenceTypes(db).map((type) => ({
     code: type.code,
@@ -46,7 +47,8 @@ export default async function LicenciasPage({
        ORDER BY r.active DESC, r.date_from DESC, r.created_at DESC
        LIMIT 200`
     )
-    .all() as unknown as AbsenceRow[];
+    .all()
+    .map((row) => ({ ...row })) as unknown as AbsenceRow[];
 
   return (
     <LicenciasPanel

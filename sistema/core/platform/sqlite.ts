@@ -58,12 +58,21 @@ export function transaction<T>(db: Db, fn: () => T): T {
   }
 }
 
+/**
+ * Filas de una consulta, como objetos planos.
+ *
+ * `node:sqlite` devuelve las filas con **prototipo nulo**. Para leerlas da igual, pero React no
+ * puede serializar un objeto así al pasarlo de un componente de servidor a uno de cliente: falla
+ * en tiempo de ejecución con "Only plain objects can be passed to Client Components". Por eso se
+ * normalizan acá, en el único lugar por donde pasan todas las consultas, y no en cada pantalla.
+ */
 export function all<T = Record<string, unknown>>(
   db: Db,
   sql: string,
   params: unknown[] = []
 ): T[] {
-  return db.prepare(sql).all(...(params as never[])) as unknown as T[];
+  const rows = db.prepare(sql).all(...(params as never[])) as unknown as T[];
+  return rows.map((row) => ({ ...row }));
 }
 
 export function get<T = Record<string, unknown>>(
@@ -72,7 +81,12 @@ export function get<T = Record<string, unknown>>(
   params: unknown[] = []
 ): T | null {
   const row = db.prepare(sql).get(...(params as never[]));
-  return (row as unknown as T) ?? null;
+  return row ? ({ ...(row as object) } as T) : null;
+}
+
+/** Convierte una fila de prototipo nulo en un objeto plano. `null` pasa sin cambios. */
+export function plain<T>(row: T | null | undefined): T | null {
+  return row ? ({ ...(row as object) } as T) : null;
 }
 
 export function run(db: Db, sql: string, params: unknown[] = []) {

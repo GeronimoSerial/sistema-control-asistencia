@@ -47,7 +47,8 @@ export default async function RegistrosPage({
       `SELECT id, last_name || ', ' || first_name AS label
        FROM people WHERE active = 1 ORDER BY last_name, first_name`
     )
-    .all() as unknown as Option[];
+    .all()
+    .map((row) => ({ ...row })) as unknown as Option[];
 
   const rawMovements = db
     .prepare(
