@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "verify:rules": "node --experimental-strip-types scripts/verify-rules.ts"
+    "verify:rules": "node --experimental-strip-types scripts/verify-rules.ts",
+    "demo:sqlite": "node --experimental-strip-types scripts/demo-sqlite.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
