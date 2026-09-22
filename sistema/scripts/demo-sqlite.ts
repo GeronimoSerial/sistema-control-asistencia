@@ -82,8 +82,8 @@ for (const level of [primaria, secundaria]) {
   initLevel(db);
   const report = installPack(db, rulePack, "INSTALADOR");
   dbs.set(level.slug, db);
-  check(`${level.slug}: tipos de ausencia instalados`, report.absenceTypes, 18);
-  check(`${level.slug}: tramos de cuota instalados`, report.quotaTiers, 26);
+  check(`${level.slug}: tipos de ausencia instalados`, report.absenceTypes, 19);
+  check(`${level.slug}: tramos de cuota instalados`, report.quotaTiers, 27);
   check(`${level.slug}: sin advertencias`, report.warnings, []);
 }
 
@@ -111,7 +111,7 @@ const radius = dbPrimaria.prepare(
 check("el radio configurado por el administrador se conserva", JSON.parse(radius.value), 120);
 
 const typeCount = dbPrimaria.prepare(`SELECT COUNT(*) AS n FROM absence_types`).get() as unknown as { n: number };
-check("reinstalar no duplica tipos de ausencia", typeCount.n, 18);
+check("reinstalar no duplica tipos de ausencia", typeCount.n, 19);
 
 /* ================================================================== *
  * 4. Datos en cada nivel y aislamiento

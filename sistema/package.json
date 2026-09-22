@@ -19,7 +19,8 @@
     "usuario:crear": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/crear-usuario.ts",
     "demo:identidad": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-identidad.ts",
     "demo:licencias": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-licencias.ts",
-    "demo:configuracion": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-configuracion.ts"
+    "demo:configuracion": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-configuracion.ts",
+    "demo:gestion": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-gestion.ts"
   },
   "dependencies": {
     "next": "^15.5.2",

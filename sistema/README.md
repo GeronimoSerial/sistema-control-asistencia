@@ -99,9 +99,10 @@ npm run demo:asistencia   # flujo completo de marcación
 npm run demo:identidad    # autenticación, permisos y aislamiento entre niveles
 npm run demo:licencias    # cómputo de días y cuotas
 npm run demo:configuracion # validación de parámetros y resguardo del último administrador
+npm run demo:gestion      # marcación manual, clasificación de salidas y vacaciones
 ```
 
-Las seis corren contra bases temporales y no tocan `data/`.
+Las siete corren contra bases temporales y no tocan `data/`.
 
 ## El panel
 
@@ -148,9 +149,12 @@ sobrevivir a los despliegues.
 
 ## Lo que todavía no está
 
-Del módulo de administración están el panel del día, el padrón, las licencias, los usuarios y la
-configuración. Faltan la clasificación de salidas intermedias, la marcación manual excepcional y
-las vacaciones con su escala de derecho.
+El módulo de administración está completo: panel del día, registros con marcación manual y
+clasificación de salidas intermedias, padrón, licencias, vacaciones, usuarios y configuración.
+
+Falta corregir la hora de un movimiento ya registrado —hoy se puede agregar uno nuevo pero no
+editar el horario de uno existente—, y el alta de niveles y sedes nuevas desde pantalla, que
+sigue siendo por línea de comandos.
 
 La pantalla de configuración se genera desde el registro de definiciones de `core/config`: cada
 parámetro declara su tipo, su ámbito, su valor por defecto y su validación en un solo lugar.

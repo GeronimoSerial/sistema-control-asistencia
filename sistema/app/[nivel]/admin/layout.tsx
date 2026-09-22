@@ -35,7 +35,9 @@ export default async function AdminLayout({
   const links: { href: string; label: string; permission: string }[] = [
     { href: `/${nivel}/admin`, label: "Hoy", permission: "attendance.read" },
     { href: `/${nivel}/admin/personal`, label: "Personal", permission: "people.read" },
+    { href: `/${nivel}/admin/registros`, label: "Registros", permission: "attendance.read" },
     { href: `/${nivel}/admin/licencias`, label: "Licencias", permission: "absence.read" },
+    { href: `/${nivel}/admin/vacaciones`, label: "Vacaciones", permission: "absence.read" },
     { href: `/${nivel}/admin/usuarios`, label: "Usuarios", permission: "users.manage" },
     { href: `/${nivel}/admin/configuracion`, label: "Configuración", permission: "settings.read" },
   ];

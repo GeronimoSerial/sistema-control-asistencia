@@ -183,3 +183,65 @@ export function loadEntitlementScale(db: Db, code: string): EntitlementScale | n
     })),
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Derecho anual (vacaciones)
+ * ------------------------------------------------------------------ */
+
+export type Entitlement = {
+  id: string;
+  personId: string;
+  scaleCode: string;
+  benefitYear: number;
+  basisValue: number;
+  serviceMonths: number;
+  extraFraction: boolean;
+  entitlementDays: number;
+  notes: string | null;
+  updatedBy: string;
+};
+
+export function loadEntitlement(
+  db: Db,
+  personId: string,
+  scaleCode: string,
+  year: number
+): Entitlement | null {
+  const row = db
+    .prepare(
+      `SELECT * FROM entitlements WHERE person_id = ? AND scale_code = ? AND benefit_year = ?`
+    )
+    .get(personId, scaleCode, year) as unknown as Record<string, string | number | null> | undefined;
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    personId: String(row.person_id),
+    scaleCode: String(row.scale_code),
+    benefitYear: Number(row.benefit_year),
+    basisValue: Number(row.basis_value),
+    serviceMonths: Number(row.service_months),
+    extraFraction: row.extra_fraction === 1,
+    entitlementDays: Number(row.entitlement_days),
+    notes: row.notes === null ? null : String(row.notes),
+    updatedBy: String(row.updated_by),
+  };
+}
+
+/** Días ya tomados de un tipo de ausencia en un año calendario. */
+export function usedDaysInYear(
+  db: Db,
+  personId: string,
+  typeCode: string,
+  year: number
+): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(r.computed_days), 0) AS total
+       FROM absence_records r
+       JOIN absence_types t ON t.id = r.absence_type_id
+       WHERE r.person_id = ? AND t.code = ? AND r.active = 1
+         AND substr(r.date_from, 1, 4) = ?`
+    )
+    .get(personId, typeCode, String(year)) as unknown as { total: number | null };
+  return Number(row?.total ?? 0);
+}
