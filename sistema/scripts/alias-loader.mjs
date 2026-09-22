@@ -12,6 +12,24 @@
 
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
+import { readFileSync, existsSync } from "node:fs";
+
+/**
+ * Carga `.env.local`.
+ *
+ * Next lo lee solo, pero un script corrido con `node` no: sin esto, los comandos de alta fallan
+ * pidiendo `AUTH_SECRET` aunque el archivo exista. Se hace acá y no con `--env-file` para no
+ * depender de la versión de Node. Lo ya definido en el entorno tiene prioridad.
+ */
+for (const file of [".env.local", ".env"]) {
+  if (!existsSync(file)) continue;
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!match || line.trimStart().startsWith("#")) continue;
+    const value = match[2].trim().replace(/^(['"])(.*)\1$/, "$2");
+    if (process.env[match[1]] === undefined) process.env[match[1]] = value;
+  }
+}
 
 register(
   "data:text/javascript," +
