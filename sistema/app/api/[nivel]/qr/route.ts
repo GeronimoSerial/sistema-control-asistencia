@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { resolveLevel, mainLocation } from "@/lib/levels";
+import { findLocationByCode } from "@/core/attendance/locations";
 import { issueQrToken, purgeExpiredTokens } from "@/core/attendance/service";
 import { getSetting } from "@/core/config/store";
 
@@ -22,20 +23,28 @@ export async function GET(
   const resolved = resolveLevel(nivel);
   if (!resolved) return NextResponse.json({ error: "Nivel inexistente" }, { status: 404 });
 
-  const location = mainLocation(resolved.context.db);
+  // `?sede=CODIGO` elige a cuál emitirle el código. Sin parámetro se usa la principal, que es lo
+  // que hace la pantalla pública cuando el nivel tiene una sola sede.
+  const requested = new URL(request.url).searchParams.get("sede");
+  const location = requested
+    ? findLocationByCode(resolved.context.db, requested)
+    : mainLocation(resolved.context.db);
+
   if (!location) {
     return NextResponse.json(
-      { error: "El nivel todavía no tiene una sede configurada" },
-      { status: 409 }
+      { error: requested ? "Esa sede no existe" : "El nivel todavía no tiene una sede configurada" },
+      { status: requested ? 404 : 409 }
     );
+  }
+  if ("active" in location && location.active !== 1) {
+    return NextResponse.json({ error: "Esa sede está desactivada" }, { status: 409 });
   }
 
   const ttl = Number(getSetting<number>(resolved.context.db, "attendance.qr_ttl_minutes", location.id) ?? 5);
   purgeExpiredTokens(resolved.context);
   const { token, expiresAt } = issueQrToken(resolved.context, location.id, ttl);
 
-  const url = new URL(request.url);
-  const markUrl = `${url.origin}/${nivel}/marcar?t=${encodeURIComponent(token)}`;
+  const markUrl = `${new URL(request.url).origin}/${nivel}/marcar?t=${encodeURIComponent(token)}`;
   const image = await QRCode.toDataURL(markUrl, { margin: 1, width: 520 });
 
   return NextResponse.json({
@@ -43,6 +52,6 @@ export async function GET(
     expiresAt,
     ttlMinutes: ttl,
     now: new Date().toISOString(),
-    location: { name: location.name },
+    location: { name: location.name, code: location.code },
   });
 }

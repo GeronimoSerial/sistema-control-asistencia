@@ -391,13 +391,18 @@ function applyAddedColumns(db: import("node:sqlite").DatabaseSync): void {
   }
 
   // El índice de intervalo abierto se creó sin contemplar los anulados: en una base vieja sigue
-  // con el predicado anterior y rechazaría reabrir un intervalo. Se rehace con el predicado
-  // completo; recrearlo es inmediato sobre tablas de este tamaño.
-  db.exec(`
-    DROP INDEX IF EXISTS idx_intervals_open;
-    CREATE UNIQUE INDEX idx_intervals_open
-      ON attendance_intervals(attendance_day_id) WHERE reentered_at IS NULL AND voided_at IS NULL;
-  `);
+  // con el predicado anterior y rechazaría reabrir un intervalo. Se rehace sólo si hace falta,
+  // porque esto corre en cada apertura del nivel.
+  const index = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_intervals_open'`)
+    .get() as unknown as { sql: string | null } | undefined;
+  if (!index?.sql?.includes("voided_at IS NULL")) {
+    db.exec(`
+      DROP INDEX IF EXISTS idx_intervals_open;
+      CREATE UNIQUE INDEX idx_intervals_open
+        ON attendance_intervals(attendance_day_id) WHERE reentered_at IS NULL AND voided_at IS NULL;
+    `);
+  }
 }
 
 /**

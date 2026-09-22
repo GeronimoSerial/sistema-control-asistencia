@@ -88,14 +88,31 @@ export function issueQrToken(
   return { token, expiresAt };
 }
 
-export function validateQrToken(ctx: LevelContext, token: string, at: Date = new Date()): boolean {
+/**
+ * Valida un código y devuelve **de qué sede salió**.
+ *
+ * Que el token sepa su sede es lo que hace posible tener más de una: la geocerca que corresponde
+ * verificar es la del edificio cuyo código se escaneó, no «la primera sede activa» del nivel. Con
+ * una sola sede daba lo mismo; con dos, usar la otra rechazaría a todo el mundo.
+ */
+export function resolveQrToken(
+  ctx: LevelContext,
+  token: string,
+  at: Date = new Date()
+): { locationId: string | null } | null {
   const row = ctx.db
-    .prepare(`SELECT id, expires_at FROM qr_tokens WHERE token_hash = ?`)
-    .get(hashToken(token)) as unknown as { id: number; expires_at: string } | undefined;
+    .prepare(`SELECT id, location_id, expires_at FROM qr_tokens WHERE token_hash = ?`)
+    .get(hashToken(token)) as unknown as
+    | { id: number; location_id: string | null; expires_at: string }
+    | undefined;
   // Las marcas se guardan en ISO-8601 UTC, que ordena igual como texto que como instante.
-  if (!row || row.expires_at <= at.toISOString()) return false;
+  if (!row || row.expires_at <= at.toISOString()) return null;
   ctx.db.prepare(`UPDATE qr_tokens SET used_count = used_count + 1 WHERE id = ?`).run(row.id);
-  return true;
+  return { locationId: row.location_id };
+}
+
+export function validateQrToken(ctx: LevelContext, token: string, at: Date = new Date()): boolean {
+  return resolveQrToken(ctx, token, at) !== null;
 }
 
 /** Borra los tokens vencidos. Conviene llamarlo junto con la emisión de uno nuevo. */

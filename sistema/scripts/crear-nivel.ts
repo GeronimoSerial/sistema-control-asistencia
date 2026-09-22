@@ -1,9 +1,12 @@
 /**
  * Alta de un nivel desde la línea de comandos.
  *
- * Crea el archivo de base, le aplica el esquema y el paquete de reglas, y opcionalmente carga la
- * sede y el primer administrador. Es idempotente: volver a correrlo sobre un nivel existente no
- * duplica nada ni pisa la configuración ya modificada.
+ * Es una forma de llamar a `provisionLevel`, la misma que usa la pantalla de plataforma. El
+ * procedimiento —crear el archivo, aplicarle el esquema y el paquete, cargar sede y primer
+ * administrador— está escrito una sola vez, en el núcleo.
+ *
+ * Sigue existiendo porque en la instalación inicial, o desde un script de despliegue, es más
+ * cómodo que abrir el navegador. Para el uso normal está `/plataforma`.
  *
  *   npm run nivel:crear -- --slug primaria --nombre "Nivel Primario" \
  *     --sede "Sede central" --lat -27.4692 --lng -58.8306 \
@@ -11,10 +14,8 @@
  */
 
 import { openDatabase } from "@/core/platform/sqlite";
-import { initPlatform, createLevel, findLevelBySlug } from "@/core/tenancy/levels";
-import { initLevel } from "@/core/migrations/level-schema";
-import { installPack } from "@/packs/install";
-import { hashSecret } from "@/core/platform/secrets";
+import { initPlatform } from "@/core/tenancy/levels";
+import { provisionLevel, ProvisionError } from "@/core/tenancy/provision";
 import type { RulePack } from "@/packs/types";
 import pack from "@/packs/ar-corrientes-dge/pack.json" with { type: "json" };
 
@@ -26,88 +27,61 @@ function arg(name: string): string | undefined {
 const slug = arg("slug");
 const nombre = arg("nombre");
 if (!slug || !nombre) {
-  console.error("Faltan argumentos. Ejemplo:\n" +
-    '  npm run nivel:crear -- --slug primaria --nombre "Nivel Primario"');
+  console.error(
+    "Faltan argumentos. Ejemplo:\n" +
+      '  npm run nivel:crear -- --slug primaria --nombre "Nivel Primario"'
+  );
   process.exit(1);
 }
 
 const dataDir = arg("data") ?? process.env.DATA_DIR ?? "./data";
-const rulePack = pack as unknown as RulePack;
-
 const platform = openDatabase(`${dataDir}/platform.db`);
 initPlatform(platform);
 
-const existed = Boolean(findLevelBySlug(platform, slug));
-const level = createLevel(platform, {
-  slug,
-  name: nombre,
-  timeZone: arg("tz") ?? rulePack.organization.timeZone,
-  locale: arg("locale") ?? rulePack.organization.locale,
-  rulePack: rulePack.id,
-  dataDir,
-});
-
-const db = openDatabase(level.databaseFile);
-initLevel(db);
-const report = installPack(db, rulePack, "CLI");
-
-console.log(`${existed ? "Actualizado" : "Creado"} el nivel «${level.name}» (${level.slug})`);
-console.log(`  archivo: ${level.databaseFile}`);
-console.log(`  reglas: ${report.absenceTypes} tipos de ausencia, ${report.quotaTiers} tramos de cuota, ` +
-  `${report.scales} escalas, ${report.policies} políticas, ${report.roles} roles`);
-if (report.warnings.length) {
-  for (const warning of report.warnings) console.warn(`  aviso: ${warning}`);
-}
-
-/* -------- Sede -------- */
-
 const sede = arg("sede");
-if (sede) {
-  const lat = arg("lat") ? Number(arg("lat")) : null;
-  const lng = arg("lng") ? Number(arg("lng")) : null;
-  if (lat === null || lng === null || Number.isNaN(lat) || Number.isNaN(lng)) {
-    console.error("  Para cargar la sede hacen falta --lat y --lng con números válidos.");
-  } else {
-    db.prepare(
-      `INSERT INTO locations (id, code, name, latitude, longitude, created_at)
-       VALUES (?, 'CENTRAL', ?, ?, ?, ?)
-       ON CONFLICT(code) DO UPDATE SET name = excluded.name,
-         latitude = excluded.latitude, longitude = excluded.longitude`
-    ).run(crypto.randomUUID(), sede, lat, lng, new Date().toISOString());
-    console.log(`  sede: ${sede} (${lat}, ${lng})`);
-  }
-}
-
-/* -------- Primer administrador -------- */
-
+const lat = arg("lat");
+const lng = arg("lng");
 const adminEmail = arg("admin");
-const adminPassword = arg("clave");
-if (adminEmail && adminPassword) {
-  if (adminPassword.length < 10) {
-    console.error("  La contraseña del administrador debe tener al menos 10 caracteres.");
-  } else {
-    const now = new Date().toISOString();
-    const hash = await hashSecret(adminPassword);
-    db.prepare(
-      `INSERT INTO users (id, email, password_hash, name, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'CLI', ?, ?)
-       ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, updated_at = excluded.updated_at`
-    ).run(crypto.randomUUID(), adminEmail.toLowerCase(), hash, adminEmail, now, now);
+const adminClave = arg("clave");
 
-    const user = db.prepare(`SELECT id FROM users WHERE email = ?`).get(adminEmail.toLowerCase()) as
-      unknown as { id: string };
-    const role = db.prepare(`SELECT id FROM roles WHERE code = 'ADMIN'`).get() as
-      unknown as { id: string } | undefined;
-    if (role) {
-      db.prepare(
-        `INSERT INTO user_roles (user_id, role_id, granted_by, granted_at) VALUES (?, ?, 'CLI', ?)
-         ON CONFLICT DO NOTHING`
-      ).run(user.id, role.id, now);
-    }
-    console.log(`  administrador: ${adminEmail}`);
+try {
+  const result = await provisionLevel(platform, pack as unknown as RulePack, {
+    slug,
+    name: nombre,
+    timeZone: arg("tz"),
+    locale: arg("locale"),
+    dataDir,
+    location: sede
+      ? {
+          name: sede,
+          code: arg("sede-codigo"),
+          latitude: lat === undefined ? null : Number(lat),
+          longitude: lng === undefined ? null : Number(lng),
+        }
+      : null,
+    admin: adminEmail && adminClave ? { email: adminEmail, password: adminClave } : null,
+    actor: "CLI",
+  });
+
+  const { level, report } = result;
+  console.log(`${result.created ? "Creado" : "Actualizado"} el nivel «${level.name}» (${level.slug})`);
+  console.log(`  archivo: ${level.databaseFile}`);
+  console.log(
+    `  reglas: ${report.absenceTypes} tipos de ausencia, ${report.quotaTiers} tramos de cuota, ` +
+      `${report.scales} escalas, ${report.policies} políticas, ${report.roles} roles`
+  );
+  for (const warning of report.warnings) console.warn(`  aviso: ${warning}`);
+  if (sede) console.log(`  sede: ${sede}${lat && lng ? ` (${lat}, ${lng})` : " (sin geocerca)"}`);
+  if (result.adminCreated) console.log(`  administrador: ${adminEmail}`);
+  else if (adminEmail) console.log(`  administrador: ${adminEmail} (ya existía, se le cambió la clave)`);
+
+  console.log(`\nAbrí http://localhost:3000/${level.slug} para ver la pantalla del QR.`);
+} catch (error) {
+  if (error instanceof ProvisionError) {
+    console.error(`No se pudo crear el nivel: ${error.code}`);
+    process.exit(1);
   }
+  throw error;
+} finally {
+  platform.close();
 }
-
-db.close();
-platform.close();
-console.log(`\nAbrí http://localhost:3000/${level.slug} para ver la pantalla del QR.`);

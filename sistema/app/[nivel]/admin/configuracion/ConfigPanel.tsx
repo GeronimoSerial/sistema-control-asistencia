@@ -1,21 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { guardarConfiguracion, guardarPolitica, guardarSede } from "./actions";
+import { guardarConfiguracion, guardarPolitica } from "./actions";
 import { emptyState, type ActionState } from "./shared";
+import { Campo, type Definition } from "../_ui/Campo";
 
-export type Definition = {
-  key: string;
-  type: string;
-  scope: string;
-  group: string;
-  label: string;
-  help?: string;
-  min?: number;
-  max?: number;
-  maxLength?: number;
-  options?: { value: string; label: string }[];
-};
+export type { Definition };
 
 export type Policy = {
   lateness_tolerance_minutes: number;
@@ -28,8 +18,6 @@ export type Policy = {
   counting_start_date: string | null;
 };
 
-export type Location = { id: string; name: string; latitude: number | null; longitude: number | null };
-
 function Aviso({ state }: { state: ActionState }) {
   return (
     <>
@@ -39,76 +27,29 @@ function Aviso({ state }: { state: ActionState }) {
   );
 }
 
-/** Dibuja el control que corresponde al tipo declarado en la definición. */
-function Campo({ definition, value }: { definition: Definition; value: unknown }) {
-  const common = { id: definition.key, name: definition.key };
-
-  if (definition.type === "boolean") {
-    return (
-      <label className="form-check" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-        <input type="checkbox" {...common} defaultChecked={Boolean(value)} style={{ width: "auto", marginTop: 3 }} />
-        <span>
-          {definition.label}
-          {definition.help && <><br /><span className="muted" style={{ fontSize: 13 }}>{definition.help}</span></>}
-        </span>
-      </label>
-    );
-  }
-
-  return (
-    <div>
-      <label htmlFor={definition.key}>{definition.label}</label>
-      {definition.type === "enum" && definition.options ? (
-        <select {...common} defaultValue={String(value ?? "")}>
-          {definition.options.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      ) : (
-        <input
-          {...common}
-          type={definition.type === "integer" || definition.type === "number" ? "number" : "text"}
-          defaultValue={String(value ?? "")}
-          min={definition.min}
-          max={definition.max}
-          maxLength={definition.maxLength}
-        />
-      )}
-      {definition.help && (
-        <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{definition.help}</div>
-      )}
-    </div>
-  );
-}
-
 export default function ConfigPanel({
   nivel,
   groups,
   values,
   policy,
-  location,
   puedeReglas,
 }: {
   nivel: string;
   groups: Record<string, Definition[]>;
   values: Record<string, unknown>;
   policy: Policy | null;
-  location: Location | null;
   puedeReglas: boolean;
 }) {
   const [configState, guardar, guardando] = useActionState(guardarConfiguracion, emptyState);
   const [policyState, guardarPol, guardandoPol] = useActionState(guardarPolitica, emptyState);
-  const [sedeState, guardarSed, guardandoSede] = useActionState(guardarSede, emptyState);
 
   return (
     <>
       <Aviso state={configState} />
       <Aviso state={policyState} />
-      <Aviso state={sedeState} />
 
       <form action={guardar} style={{ marginBottom: 26 }}>
         <input type="hidden" name="nivel" value={nivel} />
-        <input type="hidden" name="locationId" value={location?.id ?? ""} />
 
         {Object.entries(groups).map(([group, definitions]) => (
           <div key={group} className="card" style={{ marginBottom: 14 }}>
@@ -129,36 +70,12 @@ export default function ConfigPanel({
         <p className="muted" style={{ fontSize: 13 }}>
           Este formulario se genera desde el registro de parámetros del sistema: cada campo, su
           tipo y su validación están declarados en un solo lugar. Agregar un parámetro nuevo no
-          requiere tocar esta pantalla.
+          requiere tocar esta pantalla. Los parámetros que valen por sede —geocerca, vigencia del
+          QR— se configuran en <strong>Sedes</strong>, uno por cada una.
         </p>
 
         <button type="submit" disabled={guardando} style={{ width: "auto", padding: "12px 22px" }}>
           {guardando ? "Guardando…" : "Guardar configuración"}
-        </button>
-      </form>
-
-      <form action={guardarSed} className="card" style={{ marginBottom: 26 }}>
-        <h2>Sede</h2>
-        <input type="hidden" name="nivel" value={nivel} />
-        <div className="form-grid">
-          <div>
-            <label htmlFor="nombre">Nombre</label>
-            <input id="nombre" name="nombre" required defaultValue={location?.name ?? "Sede central"} />
-          </div>
-          <div>
-            <label htmlFor="lat">Latitud</label>
-            <input id="lat" name="lat" required defaultValue={location?.latitude ?? ""} />
-          </div>
-          <div>
-            <label htmlFor="lng">Longitud</label>
-            <input id="lng" name="lng" required defaultValue={location?.longitude ?? ""} />
-          </div>
-        </div>
-        <p className="muted" style={{ fontSize: 13 }}>
-          Es el centro de la geocerca. El radio se configura más arriba, en Marcación.
-        </p>
-        <button type="submit" disabled={guardandoSede} style={{ width: "auto", padding: "12px 22px" }}>
-          {guardandoSede ? "Guardando…" : "Guardar sede"}
         </button>
       </form>
 

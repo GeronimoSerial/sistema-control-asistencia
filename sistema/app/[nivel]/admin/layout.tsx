@@ -39,6 +39,7 @@ export default async function AdminLayout({
     { href: `/${nivel}/admin/licencias`, label: "Licencias", permission: "absence.read" },
     { href: `/${nivel}/admin/vacaciones`, label: "Vacaciones", permission: "absence.read" },
     { href: `/${nivel}/admin/usuarios`, label: "Usuarios", permission: "users.manage" },
+    { href: `/${nivel}/admin/sedes`, label: "Sedes", permission: "settings.read" },
     { href: `/${nivel}/admin/configuracion`, label: "Configuración", permission: "settings.read" },
   ];
 

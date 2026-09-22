@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { sessionWith } from "@/lib/session";
 import { definitionsByGroup } from "@/core/config/definitions";
 import { getSetting } from "@/core/config/store";
-import { mainLocation } from "@/lib/levels";
 import { plain } from "@/core/platform/sqlite";
 import ConfigPanel, { type Definition, type Policy } from "./ConfigPanel";
 
@@ -18,14 +17,16 @@ export default async function ConfiguracionPage({
   if (!session) redirect(`/${nivel}/ingresar`);
 
   const { db } = session.resolved.context;
-  const location = mainLocation(db);
 
-  // La pantalla no conoce ningún parámetro: los toma del registro de definiciones.
+  // La pantalla no conoce ningún parámetro: los toma del registro de definiciones. Los de ámbito
+  // de sede quedan afuera: se configuran por sede, en su propia pantalla.
   const grouped = definitionsByGroup();
   const groups: Record<string, Definition[]> = {};
   const values: Record<string, unknown> = {};
 
-  for (const [group, definitions] of Object.entries(grouped)) {
+  for (const [group, todas] of Object.entries(grouped)) {
+    const definitions = todas.filter((definition) => definition.scope !== "LOCATION");
+    if (!definitions.length) continue;
     groups[group] = definitions.map((definition) => ({
       key: definition.key,
       type: definition.type,
@@ -39,11 +40,7 @@ export default async function ConfiguracionPage({
       options: definition.options,
     }));
     for (const definition of definitions) {
-      values[definition.key] = getSetting(
-        db,
-        definition.key,
-        definition.scope === "LOCATION" ? location?.id ?? null : null
-      );
+      values[definition.key] = getSetting(db, definition.key, null);
     }
   }
 
@@ -59,7 +56,6 @@ export default async function ConfiguracionPage({
       groups={groups}
       values={values}
       policy={policy}
-      location={location}
       puedeReglas={session.user.permissions.includes("rules.manage")}
     />
   );

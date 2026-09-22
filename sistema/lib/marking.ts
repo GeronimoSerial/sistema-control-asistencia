@@ -7,7 +7,7 @@
  */
 
 import {
-  validateQrToken,
+  resolveQrToken,
   findPersonByPin,
   checkDevice,
   validateLocation,
@@ -15,6 +15,7 @@ import {
   type Coordinates,
 } from "@/core/attendance/service";
 import { resolveLevel, mainLocation, type ResolvedLevel } from "@/lib/levels";
+import { findLocation } from "@/core/attendance/locations";
 
 export type MarkRequestBody = {
   token?: string;
@@ -42,6 +43,7 @@ const MESSAGES: Record<string, string> = {
   DEVICE_USED_BY_OTHER: "Este teléfono ya está vinculado a otra persona.",
   OTHER_DEVICE_AUTHORIZED: "Tenés otro teléfono autorizado. Pedí en Administración que lo desvinculen.",
   LOCATION_NOT_CONFIGURED: "La sede no tiene ubicación configurada.",
+  LOCATION_INACTIVE: "Esta sede está desactivada. Pedí el código de la sede que corresponde.",
   OUTSIDE_RADIUS: "Estás fuera del área de la oficina.",
   NO_COORDINATES: "No se pudo obtener tu ubicación. Revisá los permisos del navegador.",
 };
@@ -58,12 +60,17 @@ export async function authorizeMarking(
   const resolved = resolveLevel(nivel);
   if (!resolved) return fail(404, "LEVEL_NOT_FOUND");
 
-  const location = mainLocation(resolved.context.db);
-  if (!location) return fail(409, "NO_LOCATION");
+  // La sede sale del propio código escaneado, no de «la primera activa»: con más de un edificio,
+  // validar contra la sede equivocada rechazaría a todo el mundo. Un token sin sede —de antes de
+  // que hubiera varias— cae en la principal.
+  const scanned = body.token ? resolveQrToken(resolved.context, body.token) : null;
+  if (!scanned) return fail(401, "INVALID_QR");
 
-  if (!body.token || !validateQrToken(resolved.context, body.token)) {
-    return fail(401, "INVALID_QR");
-  }
+  const location = scanned.locationId
+    ? findLocation(resolved.context.db, scanned.locationId)
+    : mainLocation(resolved.context.db);
+  if (!location) return fail(409, "NO_LOCATION");
+  if ("active" in location && location.active !== 1) return fail(409, "LOCATION_INACTIVE");
 
   const pin = String(body.pin ?? "").trim();
   if (!pin) return fail(401, "INVALID_PIN");

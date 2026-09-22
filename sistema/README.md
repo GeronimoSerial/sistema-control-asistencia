@@ -28,13 +28,22 @@ DATA_DIR=./data
 `AUTH_SECRET` deriva los índices de búsqueda de PIN y los hashes de dispositivo. **Si cambia,
 los PIN dejan de encontrarse.** Generalo una vez y guardalo.
 
-Creá el primer nivel:
+Creá el operador de plataforma. Es el único paso que queda por consola, y se hace una sola vez:
+
+```bash
+npm run operador:crear -- --email tu@correo --clave "una contraseña larga"
+```
+
+Con eso ya podés entrar a `http://localhost:3000/plataforma` y crear los niveles desde ahí. Si
+preferís hacerlo por consola —en un script de instalación, por ejemplo— el comando equivalente es:
 
 ```bash
 npm run nivel:crear -- --slug primaria --nombre "Nivel Primario" \
   --sede "Sede central" --lat -27.4692 --lng -58.8306 \
   --admin ana@ejemplo.gob.ar --clave "una contraseña larga"
 ```
+
+Los dos caminos llaman a la misma función, así que dan exactamente el mismo resultado.
 
 Cargá una persona para poder probar la marcación:
 
@@ -63,13 +72,13 @@ npm run dev
 ```
 
 - `http://localhost:3000` — lista de niveles
+- `http://localhost:3000/plataforma` — alta y baja de niveles
 - `http://localhost:3000/primaria` — pantalla pública del QR
 - `http://localhost:3000/primaria/ingresar` — acceso al panel
-- `http://localhost:3000/primaria/admin` — panel del día, padrón, licencias, usuarios y configuración
+- `http://localhost:3000/primaria/admin` — panel del día, padrón, licencias, usuarios, sedes y configuración
 
-Cada nivel se agrega repitiendo `nivel:crear` con otro `--slug`. El comando es idempotente:
-volver a correrlo actualiza el catálogo de reglas sin duplicar nada ni pisar la configuración que
-se haya cambiado desde la aplicación.
+Crear un nivel es idempotente por los dos caminos: repetirlo actualiza el catálogo de reglas sin
+duplicar nada ni pisar la configuración que se haya cambiado desde la aplicación.
 
 ## Cómo está organizado
 
@@ -80,7 +89,7 @@ core/        lógica de dominio, sin dependencias de la interfaz
   config/      definiciones de configuración y su almacenamiento
   migrations/  esquema de la base de un nivel
   platform/    SQLite, tiempo con zona, geodistancia, hashes
-  tenancy/     registro de niveles
+  tenancy/     registro de niveles, alta completa y operadores de plataforma
 packs/       paquetes de reglas por organismo, como datos
 lib/         resolución del nivel y validación de marcación para la aplicación web
 app/         pantallas y API
@@ -101,10 +110,11 @@ npm run demo:licencias    # cómputo de días y cuotas
 npm run demo:configuracion # validación de parámetros y resguardo del último administrador
 npm run demo:gestion      # marcación manual, clasificación de salidas y vacaciones
 npm run demo:correcciones # corrección y anulación de movimientos, y migración de bases viejas
+npm run demo:plataforma   # alta de niveles, operadores y sedes
 npm run verify:acciones   # ningún archivo "use server" exporta algo que no sea una función async
 ```
 
-Las ocho primeras corren contra bases temporales y no tocan `data/`. `verify:acciones` no toca la
+Las nueve primeras corren contra bases temporales y no tocan `data/`. `verify:acciones` no toca la
 base: lee los archivos de `app/` y adelanta un error que, si no, aparecería recién al abrir la
 pantalla en el navegador.
 
@@ -118,6 +128,35 @@ petición, de modo que quitarle un permiso a alguien tiene efecto inmediato.
 La verificación de sesión está en el layout de `/[nivel]/admin`, así que una pantalla nueva queda
 protegida por colgar de ahí. Los permisos finos se verifican en cada pantalla y en cada acción,
 porque son distintos en cada una.
+
+## Dos áreas separadas
+
+**`/plataforma`** crea, suspende y reactiva niveles, y administra los operadores. Sus cuentas
+viven en `platform.db`, aparte de las de cada nivel, y no dan acceso a ningún panel. La separación
+es deliberada: el administrador de Primaria administra Primaria y no tiene por qué poder crear
+Secundaria ni entrar en ella. Si ambas cuentas vivieran en la misma tabla, un permiso mal asignado
+alcanzaría para cruzar esa línea.
+
+Crear un nivel deja el archivo con el esquema, el paquete de reglas, la sede y el primer
+administrador —al que se le exige cambiar la contraseña en su primer ingreso—. Suspender no borra
+nada: el archivo queda donde está y el nivel deja de responder, de forma reversible.
+
+**`/{nivel}/admin`** es el panel de cada nivel, con sus propios usuarios y permisos.
+
+## Sedes
+
+Un nivel puede tener varias. Cada una define su geocerca y emite su propio QR, y los parámetros
+de ámbito de sede —radio, exigencia de ubicación, vigencia del código— se configuran por separado
+en cada una, no una vez para todo el nivel.
+
+El código QR lleva consigo de qué sede salió, y la validación de ubicación usa **esa** sede. Antes
+todo el flujo tomaba «la primera sede activa», lo que con un solo edificio funcionaba por
+casualidad y con dos habría rechazado a todos los del segundo.
+
+Con más de una sede activa, la pantalla pública deja elegir cuál mostrar; cada monitor se queda
+fijo en su dirección (`/{nivel}?sede=CODIGO`). Una sede sin coordenadas es válida: funciona sin
+geocerca. No se puede desactivar la última activa, porque sin ninguna no habría a quién emitirle
+el código.
 
 ## Marcación: cómo funciona
 
@@ -174,9 +213,10 @@ sobrevivir a los despliegues.
 
 El módulo de administración está completo: panel del día, registros con marcación manual,
 corrección y anulación de movimientos, clasificación de salidas intermedias, padrón, licencias,
-vacaciones, usuarios y configuración.
+vacaciones, usuarios, sedes y configuración. Los niveles se crean desde `/plataforma`.
 
-Falta el alta de niveles y sedes nuevas desde pantalla, que sigue siendo por línea de comandos.
+Falta lo de afuera del sistema: reportes y exportación, respaldos automáticos y el arranque como
+servicio en el servidor.
 
 La pantalla de configuración se genera desde el registro de definiciones de `core/config`: cada
 parámetro declara su tipo, su ámbito, su valor por defecto y su validación en un solo lugar.

@@ -30,14 +30,13 @@ export async function guardarConfiguracion(
   if (!session) return fail("No tenés permiso para modificar la configuración.");
 
   const { db } = session.resolved.context;
-  const locationId = String(formData.get("locationId") ?? "") || null;
 
-  const validated: { key: string; value: unknown; locationId: string | null }[] = [];
+  const validated: { key: string; value: unknown }[] = [];
   const errors: string[] = [];
 
   for (const definition of allDefinitions()) {
-    const scopeId = definition.scope === "LOCATION" ? locationId : null;
-    if (definition.scope === "LOCATION" && !locationId) continue;
+    // Los parámetros de sede no se editan acá: cada sede guarda los suyos en su pantalla.
+    if (definition.scope === "LOCATION") continue;
 
     const raw = formData.get(definition.key);
     if (raw === null) continue;
@@ -47,31 +46,26 @@ export async function guardarConfiguracion(
 
     const result = validateSetting(definition.key, value);
     if (!result.ok) errors.push(result.error);
-    else validated.push({ key: definition.key, value: result.value, locationId: scopeId });
+    else validated.push({ key: definition.key, value: result.value });
   }
 
   // Las casillas no marcadas no llegan en el formulario, así que se agregan explícitamente.
   for (const definition of allDefinitions()) {
-    if (definition.type !== "boolean") continue;
-    if (definition.scope === "LOCATION" && !locationId) continue;
+    if (definition.type !== "boolean" || definition.scope === "LOCATION") continue;
     if (validated.some((entry) => entry.key === definition.key)) continue;
-    validated.push({
-      key: definition.key,
-      value: false,
-      locationId: definition.scope === "LOCATION" ? locationId : null,
-    });
+    validated.push({ key: definition.key, value: false });
   }
 
   if (errors.length) return fail(errors.join(" "));
 
   for (const entry of validated) {
-    setSetting(db, entry.key, entry.value, session.user.email, entry.locationId);
+    setSetting(db, entry.key, entry.value, session.user.email, null);
   }
 
   db.prepare(
     `INSERT INTO audit_logs (actor, action, entity_type, entity_id, created_at)
      VALUES (?, 'UPDATE_SETTINGS', 'settings', ?, ?)`
-  ).run(session.user.email, locationId ?? "LEVEL", new Date().toISOString());
+  ).run(session.user.email, "LEVEL", new Date().toISOString());
 
   revalidatePath(`/${nivel}`, "layout");
   return { error: null, message: "Configuración guardada." };
@@ -144,29 +138,3 @@ export async function guardarPolitica(
   return { error: null, message: "Política de asistencia guardada." };
 }
 
-export async function guardarSede(
-  _previous: ActionState,
-  formData: FormData
-): Promise<ActionState> {
-  const nivel = String(formData.get("nivel") ?? "");
-  const session = await sessionWith(nivel, "settings.write");
-  if (!session) return fail("No tenés permiso para modificar la sede.");
-
-  const nombre = String(formData.get("nombre") ?? "").trim();
-  const lat = Number(formData.get("lat"));
-  const lng = Number(formData.get("lng"));
-  if (!nombre) return fail("La sede necesita un nombre.");
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return fail("La latitud no es válida.");
-  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return fail("La longitud no es válida.");
-
-  const { db } = session.resolved.context;
-  db.prepare(
-    `INSERT INTO locations (id, code, name, latitude, longitude, created_at)
-     VALUES (?, 'CENTRAL', ?, ?, ?, ?)
-     ON CONFLICT(code) DO UPDATE SET name = excluded.name,
-       latitude = excluded.latitude, longitude = excluded.longitude`
-  ).run(crypto.randomUUID(), nombre, lat, lng, new Date().toISOString());
-
-  revalidatePath(`/${nivel}`, "layout");
-  return { error: null, message: "Sede guardada." };
-}

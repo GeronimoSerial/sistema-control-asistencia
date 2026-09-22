@@ -20,10 +20,13 @@ export default function QrScreen({
   nivel,
   timeZone,
   locale,
+  sede,
 }: {
   nivel: string;
   timeZone: string;
   locale: string;
+  /** Código de la sede cuyo QR se muestra. Sin esto, el servidor usa la sede principal. */
+  sede?: string | null;
 }) {
   const [qr, setQr] = useState<QrData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +36,8 @@ export default function QrScreen({
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch(`/api/${encodeURIComponent(nivel)}/qr`, { cache: "no-store" });
+      const url = `/api/${encodeURIComponent(nivel)}/qr${sede ? `?sede=${encodeURIComponent(sede)}` : ""}`;
+      const response = await fetch(url, { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) {
         setError(data.error ?? "No se pudo generar el código.");
@@ -45,7 +49,7 @@ export default function QrScreen({
     } catch {
       setError("Sin conexión con el servidor.");
     }
-  }, [nivel]);
+  }, [nivel, sede]);
 
   useEffect(() => {
     void refresh();
