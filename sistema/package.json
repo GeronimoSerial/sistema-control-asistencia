@@ -1,0 +1,32 @@
+{
+  "name": "sistema-asistencia-niveles",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sistema de control de asistencia por nivel, sobre SQLite y servidor propio.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "verify:rules": "node --experimental-strip-types scripts/verify-rules.ts",
+    "demo:sqlite": "node --experimental-strip-types scripts/demo-sqlite.ts",
+    "demo:asistencia": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-attendance.ts",
+    "nivel:crear": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/crear-nivel.ts"
+  },
+  "dependencies": {
+    "next": "^15.5.2",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.8.0"
+  }
+}

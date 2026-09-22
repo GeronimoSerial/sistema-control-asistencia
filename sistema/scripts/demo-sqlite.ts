@@ -11,13 +11,13 @@
 import { rmSync, existsSync, statSync } from "node:fs";
 import { openDatabase } from "../core/platform/sqlite.ts";
 import { initPlatform, createLevel, listLevels, findLevelBySlug } from "../core/tenancy/levels.ts";
-import { initLevel } from "../core/migrations/sqlite/level-schema.ts";
-import { installPack } from "../packs/install-sqlite.ts";
+import { initLevel } from "../core/migrations/level-schema.ts";
+import { installPack } from "../packs/install.ts";
 import {
   loadAbsenceTypeByCode,
   consumptionFor,
   loadEntitlementScale,
-} from "../core/absence/repository-sqlite.ts";
+} from "../core/absence/repository.ts";
 import { evaluateQuota, paidDays } from "../core/absence/quota.ts";
 import { evaluateEntitlement } from "../core/absence/entitlement.ts";
 import { computeLateness, type AttendancePolicy } from "../core/attendance/policy.ts";

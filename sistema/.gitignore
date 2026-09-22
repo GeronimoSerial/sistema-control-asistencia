@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Bases de datos de los niveles. Nunca se versionan: contienen datos personales.
+data/
+*.db
+*.db-wal
+*.db-shm
+
+.env
+.env.local
+.env.*.local

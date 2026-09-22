@@ -26,7 +26,7 @@ import {
   type AttendancePolicy,
 } from "@/core/attendance/policy";
 import { hashToken, newToken, lookupKey, verifySecret, hashSecret } from "@/core/platform/secrets";
-import { getSetting } from "@/core/config/store-sqlite";
+import { getSetting } from "@/core/config/store";
 
 type Db = DatabaseSync;
 
@@ -320,6 +320,48 @@ function movementsOf(ctx: LevelContext, dayId: number): EventRow[] {
 export function lastMovement(ctx: LevelContext, dayId: number): EventRow | null {
   const movements = movementsOf(ctx, dayId);
   return movements.length ? movements[movements.length - 1] : null;
+}
+
+export type NextAction = {
+  /** Movimiento que corresponde ahora, o `null` si no hay ninguno posible. */
+  action: "ENTRY" | "EXIT" | "REENTRY" | null;
+  /** Por qué no hay acción posible, cuando `action` es `null`. */
+  reason: "NO_SCHEDULE" | "ON_ABSENCE" | "DAY_CLOSED" | null;
+  schedule: ScheduleRow | null;
+  day: DayRow | null;
+};
+
+/**
+ * Qué movimiento corresponde a una persona en este momento.
+ *
+ * Es lo que permite que la pantalla de marcación no tenga que decidir nada: muestra un solo
+ * botón con lo que sigue. La secuencia y sus restricciones viven acá, no en la interfaz.
+ */
+export function nextAction(
+  ctx: LevelContext,
+  personId: string,
+  at: Date = new Date()
+): NextAction {
+  const date = localDate(ctx, at);
+  const schedule = scheduleFor(ctx, personId, localWeekday(ctx, at));
+  if (!schedule) return { action: null, reason: "NO_SCHEDULE", schedule: null, day: null };
+  if (openAbsenceFor(ctx, personId, date)) {
+    return { action: null, reason: "ON_ABSENCE", schedule, day: null };
+  }
+
+  const day = dayFor(ctx, personId, date);
+  if (!day?.entry_at) return { action: "ENTRY", reason: null, schedule, day };
+
+  const last = lastMovement(ctx, day.id);
+  if (!last) return { action: "ENTRY", reason: null, schedule, day };
+
+  if (last.event_type === "ENTRY" || last.event_type === "REENTRY") {
+    return { action: "EXIT", reason: null, schedule, day };
+  }
+  if (last.event_type === "EXIT" && ctx.policy.movementSequence === "MULTI") {
+    return { action: "REENTRY", reason: null, schedule, day };
+  }
+  return { action: null, reason: "DAY_CLOSED", schedule, day };
 }
 
 /**

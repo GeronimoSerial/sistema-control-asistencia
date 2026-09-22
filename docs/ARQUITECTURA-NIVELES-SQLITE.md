@@ -52,12 +52,12 @@ archivo de su nivel — es lo que da "un administrador por nivel" sin que nadie 
 |---|---|
 | `core/platform/sqlite.ts` | Apertura de bases, PRAGMA de arranque, transacciones, conversiones |
 | `core/tenancy/levels.ts` | Registro de niveles (`platform.db`) |
-| `core/migrations/sqlite/level-schema.ts` | Esquema completo de un nivel y catálogo de permisos |
-| `packs/install-sqlite.ts` | Aplicación de un paquete de reglas a un nivel |
-| `core/absence/repository-sqlite.ts` | Lectura de reglas y consumo para el evaluador |
+| `core/migrations/level-schema.ts` | Esquema completo de un nivel y catálogo de permisos |
+| `packs/install.ts` | Aplicación de un paquete de reglas a un nivel |
+| `core/absence/repository.ts` | Lectura de reglas y consumo para el evaluador |
 | `core/platform/secrets.ts` | Hashes con `scrypt` de Node y tokens, sin dependencias externas |
 | `core/platform/geo.ts` | Distancia entre coordenadas |
-| `core/config/store-sqlite.ts` | Lectura y escritura de la configuración del nivel |
+| `core/config/store.ts` | Lectura y escritura de la configuración del nivel |
 | `core/attendance/service.ts` | Flujo completo de marcación: QR, PIN, dispositivo, geocerca, jornada |
 | `scripts/demo-sqlite.ts` | Prueba de la capa de datos |
 | `scripts/demo-attendance.ts` | Prueba del flujo de asistencia |
@@ -137,8 +137,37 @@ Otra diferencia: las contraseñas y los PIN usan `scrypt` de Node en lugar de bc
 una dependencia que haya que instalar en el servidor, y bcryptjs es JavaScript puro, bastante más
 lento que la implementación nativa.
 
+## Dónde vive el código
+
+El sistema nuevo está en `sistema/`, como proyecto Next independiente con su propio
+`package.json`. La aplicación de la raíz —la que está en producción sobre Vercel y Neon— no se
+toca y sigue funcionando igual. Cuando convenga, `sistema/` se mueve a un repositorio propio
+copiando la carpeta.
+
+Los módulos que habían quedado del rumbo anterior (PostgreSQL y multi-inquilino por columna) se
+eliminaron, y los que tenían sufijo `-sqlite` lo perdieron: ya no hay dos implementaciones que
+distinguir.
+
+## La aplicación web
+
+| Ruta | Qué es |
+|---|---|
+| `/` | Lista de niveles activos |
+| `/{nivel}` | Pantalla pública con el QR rotativo, reloj y cuenta regresiva |
+| `/{nivel}/marcar?t=…` | Flujo de marcación en el celular |
+| `POST /api/{nivel}/mark/status` | Identifica y dice qué movimiento corresponde |
+| `POST /api/{nivel}/mark/submit` | Registra el movimiento |
+
+El servidor recalcula el movimiento que corresponde antes de registrar y rechaza la petición si
+no coincide con el que el cliente creía: entre que se mostró la pantalla y se tocó el botón pudo
+cambiar el estado, y no debe registrarse algo distinto de lo que la persona vio.
+
+Las conexiones SQLite se guardan en un caché en `globalThis`, porque en desarrollo Next recarga
+los módulos en cada cambio y sin eso se abrirían conexiones nuevas hasta agotar los descriptores
+de archivo.
+
 ## Qué falta
 
-El núcleo está probado, pero el sistema nuevo todavía no tiene aplicación: faltan las pantallas,
-la sesión de usuario, el módulo de administración y el servidor que lo sirva. Lo que existe es la
-capa de datos y la lógica de negocio, verificadas de punta a punta.
+La sesión de usuario y el módulo de administración. Los niveles, las sedes y los administradores
+se crean hoy por línea de comandos (`npm run nivel:crear`); las personas y sus horarios todavía
+no tienen pantalla de carga.

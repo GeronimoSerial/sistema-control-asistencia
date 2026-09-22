@@ -9,9 +9,9 @@
 
 import { rmSync } from "node:fs";
 import { openDatabase } from "@/core/platform/sqlite";
-import { initLevel } from "@/core/migrations/sqlite/level-schema";
-import { installPack } from "@/packs/install-sqlite";
-import { setSetting } from "@/core/config/store-sqlite";
+import { initLevel } from "@/core/migrations/level-schema";
+import { installPack } from "@/packs/install";
+import { setSetting } from "@/core/config/store";
 import type { AttendancePolicy } from "@/core/attendance/policy";
 import {
   issueQrToken, validateQrToken, setPin, findPersonByPin, checkDevice, validateLocation,
