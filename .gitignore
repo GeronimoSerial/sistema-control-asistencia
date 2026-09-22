@@ -1,0 +1,28 @@
+# Dependencias
+node_modules/
+
+# Build de Next
+.next/
+out/
+next-env.d.ts
+
+# Artefactos de compilación de TypeScript
+*.tsbuildinfo
+
+# Variables de entorno. Nunca deben versionarse: contienen la cadena de conexión
+# a la base, el secreto de las sesiones y las credenciales administrativas.
+.env
+.env.local
+.env.*.local
+
+# Parches y archivos temporales del refactor
+*.patch
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Vercel
+.vercel/
