@@ -1,0 +1,311 @@
+{
+  "id": "ar-corrientes-dge",
+  "name": "Dirección de Gestión Escolar — Corrientes",
+  "version": "1.0.0",
+  "description": "Reglas extraídas del sistema DGE v1.25.3: Estatuto del Docente de la Provincia de Corrientes, escala de vacaciones Arts. 4 y 5, y política de asistencia con tolerancia de 15 minutos.",
+
+  "organization": {
+    "timeZone": "America/Argentina/Buenos_Aires",
+    "locale": "es-AR"
+  },
+
+  "settings": {
+    "branding.name": "Dirección de Gestión Escolar",
+    "branding.kicker": "Gobierno de Corrientes · Ministerio de Educación",
+    "branding.footer": "Dirección de Gestión Escolar · Ministerio de Educación · Gobierno de Corrientes",
+    "branding.app_title": "Control de Asistencia",
+    "locale.time_zone": "America/Argentina/Buenos_Aires",
+    "locale.locale": "es-AR",
+    "attendance.geofence_radius_meters": 75,
+    "attendance.require_geolocation": true,
+    "attendance.qr_ttl_minutes": 5,
+    "attendance.pin_length": 4,
+    "attendance.temporary_pin_valid_days": 7,
+    "people.national_id_label": "DNI",
+    "security.session_hours": 12
+  },
+
+  "attendancePolicies": [
+    {
+      "code": "DGE",
+      "name": "Régimen DGE",
+      "latenessToleranceMinutes": 15,
+      "latenessMode": "FULL_FROM_SCHEDULED",
+      "countEarlyExit": true,
+      "compensationMode": "SAME_DAY",
+      "autoCloseMode": "THEORETICAL_END",
+      "autoCloseGraceMinutes": 60,
+      "movementSequence": "MULTI",
+      "countingStartDate": "2026-09-12"
+    }
+  ],
+
+  "absenceCategories": [
+    { "code": "MEDICAL", "name": "Licencias médicas" },
+    { "code": "ADMINISTRATIVE", "name": "Licencias administrativas" },
+    { "code": "VACATION", "name": "Vacaciones" },
+    { "code": "SERVICE", "name": "Comisiones y afectaciones" },
+    { "code": "OTHER", "name": "Otras novedades" }
+  ],
+
+  "absenceTypes": [
+    {
+      "code": "ART8A",
+      "name": "Afecciones comunes",
+      "categoryCode": "MEDICAL",
+      "reference": "Art. 8 inc. a",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "Continuos o discontinuos por año calendario. Sin antigüedad mínima.",
+      "tiers": [
+        { "order": 1, "label": "Con goce íntegro", "window": "ANNUAL", "limitDays": 30, "payRate": 1, "onExhausted": "SPILL" },
+        { "order": 2, "label": "Excedente sin goce", "window": "ANNUAL", "limitDays": null, "payRate": 0, "onExhausted": "WARN" }
+      ]
+    },
+    {
+      "code": "ART8B",
+      "name": "Afecciones de largo tratamiento",
+      "categoryCode": "MEDICAL",
+      "reference": "Art. 8 inc. b",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "Tras agotar 3 años, nueva licencia de este carácter luego de 3 años de servicios.",
+      "tiers": [
+        { "order": 1, "label": "Primeros 2 años al 100 %", "window": "EVENT", "limitDays": 730, "payRate": 1, "onExhausted": "SPILL" },
+        { "order": 2, "label": "Tercer año al 50 %", "window": "EVENT", "limitDays": 365, "payRate": 0.5, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART8C",
+      "name": "Accidente de trabajo o enfermedad ocupacional",
+      "categoryCode": "MEDICAL",
+      "reference": "Art. 8 inc. c",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "Sin antigüedad mínima.",
+      "tiers": [
+        { "order": 1, "label": "Primeros 2 años al 100 %", "window": "EVENT", "limitDays": 730, "payRate": 1, "onExhausted": "SPILL" },
+        { "order": 2, "label": "Tercer año al 50 %", "window": "EVENT", "limitDays": 365, "payRate": 0.5, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART12",
+      "name": "Atención de miembro del grupo familiar enfermo",
+      "categoryCode": "MEDICAL",
+      "reference": "Art. 12",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "Familiar conviviente a exclusivo cuidado o padre/hijo directo.",
+      "tiers": [
+        { "order": 1, "label": "Con goce íntegro", "window": "ANNUAL", "limitDays": 20, "payRate": 1, "onExhausted": "SPILL" },
+        { "order": 2, "label": "Ampliación sin goce", "window": "ANNUAL", "limitDays": 20, "payRate": 0, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART13",
+      "name": "Maternidad",
+      "categoryCode": "MEDICAL",
+      "reference": "Art. 13 inc. a y f",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "180 días corridos. Al 100 % con 10 meses de servicios docentes; de lo contrario sin goce.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": 180, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "LEY5898",
+      "name": "Atención de hijo recién nacido por fallecimiento de la madre",
+      "categoryCode": "MEDICAL",
+      "reference": "Ley 5898 - Art. 1",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "Período equivalente al de maternidad que correspondía a la madre.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": null, "payRate": 1, "onExhausted": "WARN" }
+      ]
+    },
+    {
+      "code": "ART13BIS",
+      "name": "Violencia de género",
+      "categoryCode": "MEDICAL",
+      "reference": "Art. 13 bis",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "Hasta 15 días corridos, continuos o discontinuos, prorrogables por otro período idéntico.",
+      "tiers": [
+        { "order": 1, "label": "Período base", "window": "EVENT", "limitDays": 15, "payRate": 1, "onExhausted": "SPILL" },
+        { "order": 2, "label": "Prórroga", "window": "EVENT", "limitDays": 15, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART15",
+      "name": "Matrimonio",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 15",
+      "dayBasis": "CALENDAR",
+      "notes": "15 días corridos.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": 15, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART16_7",
+      "name": "Duelo — familiar directo",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 16",
+      "dayBasis": "CALENDAR",
+      "notes": "Madre, padre, cónyuge, hijo, hermano, padrastro, madrastra, hermanastros o hijastros.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": 7, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART16_3",
+      "name": "Duelo — abuelos, nietos, bisabuelos y familiares políticos",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 16",
+      "dayBasis": "CALENDAR",
+      "notes": "Hasta 3 días corridos según el parentesco previsto en la norma.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": 3, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART16_1",
+      "name": "Duelo — tíos, sobrinos y primos",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 16",
+      "dayBasis": "CALENDAR",
+      "notes": "1 día: fallecimiento o sepelio.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": 1, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART17",
+      "name": "Representación política",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 17",
+      "dayBasis": "MANUAL",
+      "notes": "Mientras dure el mandato. Requiere 1 año de antigüedad en la docencia.",
+      "tiers": [
+        { "order": 1, "label": "Sin goce de haberes", "window": "LIFETIME", "limitDays": null, "payRate": 0, "onExhausted": "WARN" }
+      ]
+    },
+    {
+      "code": "ART18",
+      "name": "Representación gremial",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 18",
+      "dayBasis": "MANUAL",
+      "notes": "Mientras dure el mandato gremial. Sin antigüedad mínima.",
+      "tiers": [
+        { "order": 1, "label": "Sin goce de haberes", "window": "LIFETIME", "limitDays": null, "payRate": 0, "onExhausted": "WARN" }
+      ]
+    },
+    {
+      "code": "ART19_SUP",
+      "name": "Preparación y mesa de exámenes — Nivel Superior",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 19",
+      "dayBasis": "BUSINESS",
+      "notes": "Hasta 12 días hábiles por año, en fracciones de hasta 3 días hábiles por vez, inmediatos anteriores al examen.",
+      "tiers": [
+        { "order": 1, "label": "Tope anual", "window": "ANNUAL", "limitDays": 12, "payRate": 1, "onExhausted": "BLOCK" },
+        { "order": 2, "label": "Tope por examen", "window": "EVENT", "limitDays": 3, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART19_MEDIA",
+      "name": "Preparación y mesa de exámenes — Enseñanza Media",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 19",
+      "dayBasis": "BUSINESS",
+      "notes": "Hasta 8 días hábiles por año, en fracciones de hasta 2 días hábiles continuos, incluido el examen.",
+      "tiers": [
+        { "order": 1, "label": "Tope anual", "window": "ANNUAL", "limitDays": 8, "payRate": 1, "onExhausted": "BLOCK" },
+        { "order": 2, "label": "Tope por examen", "window": "EVENT", "limitDays": 2, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART30A",
+      "name": "Nacimiento de hijo — docente varón",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 30 inc. a",
+      "dayBasis": "BUSINESS",
+      "notes": "Un día hábil: el día del nacimiento o el inmediato posterior.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": 1, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART30B",
+      "name": "Razones particulares",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 30 inc. b",
+      "dayBasis": "CALENDAR",
+      "notes": "Hasta 6 días por año calendario y no más de 2 por mes. Sujeto a criterio de la autoridad competente.",
+      "tiers": [
+        { "order": 1, "label": "Tope anual", "window": "ANNUAL", "limitDays": 6, "payRate": 1, "onExhausted": "BLOCK" },
+        { "order": 2, "label": "Tope mensual", "window": "MONTHLY", "limitDays": 2, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    },
+    {
+      "code": "ART30C",
+      "name": "Donación de sangre",
+      "categoryCode": "ADMINISTRATIVE",
+      "reference": "Art. 30 inc. c",
+      "dayBasis": "CALENDAR",
+      "requiresDocument": true,
+      "notes": "Justifica el día de la donación. Requiere certificación de establecimiento médico reconocido.",
+      "tiers": [
+        { "order": 1, "window": "EVENT", "limitDays": 1, "payRate": 1, "onExhausted": "BLOCK" }
+      ]
+    }
+  ],
+
+  "entitlementScales": [
+    {
+      "code": "VACATION",
+      "name": "Vacaciones anuales — Arts. 4 y 5",
+      "basis": "SENIORITY_YEARS",
+      "proration": "MONTHLY_TWELFTHS",
+      "fullAfterMonths": 6,
+      "extraFractionOverDays": 15,
+      "tiers": [
+        { "fromValue": 0, "toValue": 5, "days": 20 },
+        { "fromValue": 6, "toValue": 10, "days": 25 },
+        { "fromValue": 11, "toValue": 15, "days": 30 },
+        { "fromValue": 16, "toValue": null, "days": 35 }
+      ]
+    }
+  ],
+
+  "roles": [
+    {
+      "code": "ADMIN",
+      "name": "Administrador",
+      "description": "Acceso completo al organismo.",
+      "permissions": [
+        "attendance.read", "attendance.write", "attendance.mark_manual",
+        "absence.read", "absence.write",
+        "people.read", "people.manage", "people.credentials",
+        "settings.read", "settings.write",
+        "rules.manage", "users.manage", "audit.read"
+      ]
+    },
+    {
+      "code": "LICENSE_OPERATOR",
+      "name": "Operador de Licencias",
+      "description": "Consulta el padrón y registra licencias y vacaciones.",
+      "permissions": ["absence.read", "absence.write", "people.read"]
+    },
+    {
+      "code": "ATTENDANCE_OPERATOR",
+      "name": "Operador de Asistencia",
+      "description": "Consulta registros y realiza marcaciones manuales excepcionales.",
+      "permissions": ["attendance.read", "attendance.write", "attendance.mark_manual", "people.read"]
+    }
+  ]
+}
