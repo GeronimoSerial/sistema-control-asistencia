@@ -46,6 +46,16 @@ npm run persona:crear -- --nivel primaria --apellido Gómez --nombre Ana \
 `--dias` acepta un rango (`1-5`) o una lista (`1,3,5`); lunes es 1 y domingo es 7. Volver a
 correrlo con el mismo documento actualiza la persona en lugar de duplicarla.
 
+Creá un usuario para entrar al panel:
+
+```bash
+npm run usuario:crear -- --nivel primaria --email ana@ejemplo.gob.ar \
+  --clave "una contraseña larga" --rol ADMIN
+```
+
+Los roles que instala el paquete son `ADMIN`, `LICENSE_OPERATOR` y `ATTENDANCE_OPERATOR`. El
+mismo comando sirve para restablecer una contraseña: si el correo ya existe, la reemplaza.
+
 Y levantá el servidor:
 
 ```bash
@@ -54,6 +64,8 @@ npm run dev
 
 - `http://localhost:3000` — lista de niveles
 - `http://localhost:3000/primaria` — pantalla pública del QR
+- `http://localhost:3000/primaria/ingresar` — acceso al panel
+- `http://localhost:3000/primaria/admin` — panel del día y padrón
 
 Cada nivel se agrega repitiendo `nivel:crear` con otro `--slug`. El comando es idempotente:
 volver a correrlo actualiza el catálogo de reglas sin duplicar nada ni pisar la configuración que
@@ -84,9 +96,21 @@ levantar el servidor.
 npm run verify:rules      # los evaluadores dan los mismos números que la lógica anterior
 npm run demo:sqlite       # dos niveles reales, aislamiento y saldos
 npm run demo:asistencia   # flujo completo de marcación
+npm run demo:identidad    # autenticación, permisos y aislamiento entre niveles
 ```
 
-Las tres corren contra bases temporales y no tocan `data/`.
+Las cuatro corren contra bases temporales y no tocan `data/`.
+
+## El panel
+
+La sesión es por nivel: la cookie se llama `sesion_<nivel>` y su ruta es `/<nivel>`, así que
+alguien puede estar autenticado en Primaria y en Secundaria a la vez sin que una sesión pise a la
+otra. Va firmada con HMAC y **no guarda los permisos**: se resuelven contra la base en cada
+petición, de modo que quitarle un permiso a alguien tiene efecto inmediato.
+
+La verificación de sesión está en el layout de `/[nivel]/admin`, así que una pantalla nueva queda
+protegida por colgar de ahí. Los permisos finos se verifican en cada pantalla y en cada acción,
+porque son distintos en cada una.
 
 ## Marcación: cómo funciona
 
@@ -122,6 +146,8 @@ sobrevivir a los despliegues.
 
 ## Lo que todavía no está
 
-La sesión de usuario y el módulo de administración. Los niveles, las sedes, los administradores y
-las personas se crean por línea de comandos: `nivel:crear` y `persona:crear`. Son provisionales,
-para poder probar el sistema antes de que existan las pantallas.
+Del módulo de administración están el panel del día y el padrón. Faltan las pantallas de
+licencias y saldos, configuración del nivel, usuarios y roles, clasificación de salidas
+intermedias y marcación manual excepcional.
+
+Los niveles y las sedes se siguen creando por línea de comandos.
