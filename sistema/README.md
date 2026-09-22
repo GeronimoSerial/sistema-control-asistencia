@@ -36,6 +36,16 @@ npm run nivel:crear -- --slug primaria --nombre "Nivel Primario" \
   --admin ana@ejemplo.gob.ar --clave "una contraseña larga"
 ```
 
+Cargá una persona para poder probar la marcación:
+
+```bash
+npm run persona:crear -- --nivel primaria --apellido Gómez --nombre Ana \
+  --dni 20111222 --pin 4821 --horario 08:00-14:00 --dias 1-5
+```
+
+`--dias` acepta un rango (`1-5`) o una lista (`1,3,5`); lunes es 1 y domingo es 7. Volver a
+correrlo con el mismo documento actualiza la persona en lugar de duplicarla.
+
 Y levantá el servidor:
 
 ```bash
@@ -112,6 +122,6 @@ sobrevivir a los despliegues.
 
 ## Lo que todavía no está
 
-La sesión de usuario y el módulo de administración. Hoy los niveles, las sedes y los
-administradores se crean por línea de comandos; las personas y sus horarios todavía no tienen
-pantalla de carga.
+La sesión de usuario y el módulo de administración. Los niveles, las sedes, los administradores y
+las personas se crean por línea de comandos: `nivel:crear` y `persona:crear`. Son provisionales,
+para poder probar el sistema antes de que existan las pantallas.
