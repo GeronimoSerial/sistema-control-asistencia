@@ -55,7 +55,12 @@ archivo de su nivel — es lo que da "un administrador por nivel" sin que nadie 
 | `core/migrations/sqlite/level-schema.ts` | Esquema completo de un nivel y catálogo de permisos |
 | `packs/install-sqlite.ts` | Aplicación de un paquete de reglas a un nivel |
 | `core/absence/repository-sqlite.ts` | Lectura de reglas y consumo para el evaluador |
-| `scripts/demo-sqlite.ts` | Prueba de punta a punta |
+| `core/platform/secrets.ts` | Hashes con `scrypt` de Node y tokens, sin dependencias externas |
+| `core/platform/geo.ts` | Distancia entre coordenadas |
+| `core/config/store-sqlite.ts` | Lectura y escritura de la configuración del nivel |
+| `core/attendance/service.ts` | Flujo completo de marcación: QR, PIN, dispositivo, geocerca, jornada |
+| `scripts/demo-sqlite.ts` | Prueba de la capa de datos |
+| `scripts/demo-attendance.ts` | Prueba del flujo de asistencia |
 
 Los evaluadores de `core/absence/quota.ts`, `core/absence/entitlement.ts`,
 `core/attendance/policy.ts` y `core/platform/time.ts` **no cambiaron ni una línea**. Son funciones
@@ -110,9 +115,30 @@ Crea dos niveles reales, les instala el paquete, carga personas y ausencias, y c
 condiciones: saldos por tramos, ventana por evento, topes anuales y mensuales simultáneos,
 aislamiento entre niveles, idempotencia de la instalación y verificación de claves foráneas.
 
+## El servicio de asistencia
+
+`core/attendance/service.ts` reemplaza a `lib/attendance.ts` con tres diferencias de fondo:
+
+1. **La zona horaria viene del nivel**, no de una constante.
+2. **Los eventos son la única fuente de verdad.** `attendance_days` es una proyección que se
+   recalcula siempre con la misma función, `recomputeDay()`. En el sistema anterior el cálculo de
+   tardanza estaba escrito tres veces —registro de entrada, recálculo del panel y marcación
+   manual— y una de las copias ni siquiera leía la configuración. Ahora no puede haber dos
+   resultados distintos para los mismos eventos.
+3. **La política es un dato**: tolerancia, compensación, cierre automático y secuencia de
+   movimientos salen de `attendance_policies`.
+
+También se aclaró la semántica de los intervalos. Toda salida abre uno, pero sólo los **cerrados
+por un reingreso** son ausencias intermedias que corresponde clasificar. Un intervalo abierto al
+final del día no es un caso pendiente: es el fin de la jornada. `pendingIntervals()` devuelve
+únicamente los que de verdad esperan decisión administrativa.
+
+Otra diferencia: las contraseñas y los PIN usan `scrypt` de Node en lugar de bcryptjs. No agrega
+una dependencia que haya que instalar en el servidor, y bcryptjs es JavaScript puro, bastante más
+lento que la implementación nativa.
+
 ## Qué falta
 
-El núcleo de datos está probado, pero el sistema nuevo todavía no tiene aplicación: faltan las
-pantallas, la autenticación, el flujo de marcación con QR y el módulo de administración. El
-siguiente paso natural es el registro de asistencia de punta a punta sobre esta base, porque es
-lo que ejercita el modelo completo.
+El núcleo está probado, pero el sistema nuevo todavía no tiene aplicación: faltan las pantallas,
+la sesión de usuario, el módulo de administración y el servidor que lo sirva. Lo que existe es la
+capa de datos y la lógica de negocio, verificadas de punta a punta.

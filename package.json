@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "verify:rules": "node --experimental-strip-types scripts/verify-rules.ts",
-    "demo:sqlite": "node --experimental-strip-types scripts/demo-sqlite.ts"
+    "demo:sqlite": "node --experimental-strip-types scripts/demo-sqlite.ts",
+    "demo:asistencia": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-attendance.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
