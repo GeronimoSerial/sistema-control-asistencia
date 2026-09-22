@@ -35,9 +35,12 @@ export async function ensureV13Schema(){
   // V1.22.1: inicio oficial del cómputo de inasistencias.
   // No se generan ni contabilizan inasistencias hasta el 11/09/2026 inclusive.
   await sql`ALTER TABLE office_settings ADD COLUMN IF NOT EXISTS absence_count_start_date DATE`;
-  await sql`UPDATE office_settings SET absence_count_start_date='2026-09-12'::date,updated_at=now() WHERE id=1 AND absence_count_start_date IS DISTINCT FROM '2026-09-12'::date`;
-  // V1.22: tolerancia oficial de ingreso fijada en 15 minutos.
-  await sql`UPDATE office_settings SET lateness_tolerance_minutes=15,updated_at=now() WHERE id=1 AND lateness_tolerance_minutes<>15`;
+  // Sólo se establece si nunca se fijó. Antes esta sentencia forzaba el valor en cada arranque,
+  // igual que la de la tolerancia de 15 minutos que estaba acá abajo: entre las dos revertían
+  // cualquier cambio hecho por el administrador desde la pantalla de configuración, en la
+  // siguiente instancia fría de serverless. La tolerancia pasó a ser parte de la política de
+  // asistencia del organismo (attendance_policies) y ya no se escribe desde una migración.
+  await sql`UPDATE office_settings SET absence_count_start_date='2026-09-12'::date,updated_at=now() WHERE id=1 AND absence_count_start_date IS NULL`;
   await sql`CREATE TABLE IF NOT EXISTS employee_devices (
     id BIGSERIAL PRIMARY KEY, employee_id TEXT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
     device_hash TEXT NOT NULL UNIQUE, user_agent TEXT, active BOOLEAN NOT NULL DEFAULT TRUE,

@@ -3,6 +3,16 @@ import { getAdminSession, isAdmin, canManageAttendance } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { ensureV13Schema } from "@/lib/migrations";
+import { currentOrganizationId } from "@/core/tenancy/context";
+import { loadAttendancePolicy } from "@/core/attendance/repository";
+import { computeClosure, computeLateness } from "@/core/attendance/policy";
+
+/**
+ * Política vigente del organismo. La regla de tardanza estaba duplicada en este archivo y en
+ * lib/attendance.ts, con una tercera copia que además ignoraba la configuración y usaba 15 fijo.
+ * Ahora las tres salen de acá.
+ */
+async function activePolicy(){return loadAttendancePolicy(await currentOrganizationId())}
 
 const reasons=new Set(["PERSONAL","MEDICAL","COMMISSION","AUTHORIZED_PERMISSION","LEAVE_HOURS","UNJUSTIFIED","OTHER"]);
 const manualReasons=new Set(["BROKEN_PHONE","DEVICE_PROBLEM","SYSTEM_FAILURE","OTHER"]);
@@ -27,19 +37,18 @@ async function recalculateAttendanceDay(sql:any, dayId:number){
   `;
   const entry=events.find((e:any)=>String(e.event_type)==='ENTRY');
   if(!entry)return;
-  const toleranceRow=(await sql`SELECT lateness_tolerance_minutes FROM office_settings WHERE id=1 LIMIT 1`)[0];
-  const tolerance=Number(toleranceRow?.lateness_tolerance_minutes ?? 15);
+  const policy=await activePolicy();
   const start=String(day.scheduled_start).slice(0,5);
-  const rawLate=Math.max(0,minutes(String(entry.local_time))-minutes(start));
-  const late=rawLate>tolerance?rawLate:0;
+  const late=computeLateness(policy,minutes(String(entry.local_time))-minutes(start));
   const last=events[events.length-1];
   if(last && ['EXIT','AUTO_EXIT'].includes(String(last.event_type))){
     const end=String(day.scheduled_end).slice(0,5);
     const exitLocal=String(last.local_time);
-    const after=Math.max(0,minutes(exitLocal)-minutes(end));
-    const early=Math.max(0,minutes(end)-minutes(exitLocal));
-    const comp=Math.min(late,after);
-    const pending=Math.max(0,late-comp)+early;
+    const {earlyMinutes:early,compensationMinutes:comp,pendingMinutes:pending}=computeClosure(policy,{
+      lateMinutes:late,
+      minutesAfterScheduledEnd:Math.max(0,minutes(exitLocal)-minutes(end)),
+      earlyExitMinutes:Math.max(0,minutes(end)-minutes(exitLocal)),
+    });
     await sql`UPDATE attendance_days SET entry_at=${entry.occurred_at},exit_at=${last.occurred_at},late_minutes=${late},early_minutes=${early},compensation_minutes=${comp},pending_minutes=${pending},updated_at=now() WHERE id=${dayId}`;
   }else{
     await sql`UPDATE attendance_days SET entry_at=${entry.occurred_at},exit_at=NULL,early_minutes=0,late_minutes=${late},compensation_minutes=0,pending_minutes=${late},updated_at=now() WHERE id=${dayId}`;
@@ -111,9 +120,8 @@ export async function POST(request:Request){
 
   if(eventType==="ENTRY"){
     if(day?.entry_at)return NextResponse.json({error:"La jornada ya tiene una entrada registrada."},{status:409});
-    const start=String(schedule.start_time).slice(0,5);const raw=Math.max(0,minutes(time)-minutes(start));
-    // Regla DGE: hasta 15 min no hay atraso; si se supera, se computa el total desde la hora prevista.
-    const late=raw>15?raw:0;
+    const start=String(schedule.start_time).slice(0,5);
+    const late=computeLateness(await activePolicy(),minutes(time)-minutes(start));
     if(!day){
       day=(await sql`INSERT INTO attendance_days(employee_id,work_date,scheduled_start,scheduled_end,entry_at,late_minutes,pending_minutes,admin_note)
         VALUES(${employeeId},${date}::date,${start}::time,${String(schedule.end_time).slice(0,5)}::time,(${occurred}::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires'),${late},${late},${`Marcación manual: ${manualReason}${note?` - ${note}`:""}`}) RETURNING *`)[0];
@@ -124,7 +132,12 @@ export async function POST(request:Request){
   } else if(eventType==="EXIT"){
     if(!day?.entry_at)return NextResponse.json({error:"No puede registrar una salida sin una entrada previa."},{status:409});
     if(!last||!["ENTRY","REENTRY"].includes(String(last.event_type)))return NextResponse.json({error:"La secuencia actual no admite una salida."},{status:409});
-    const end=String(day.scheduled_end).slice(0,5);const after=Math.max(0,minutes(time)-minutes(end));const early=Math.max(0,minutes(end)-minutes(time));const late=Number(day.late_minutes||0);const comp=Math.min(late,after);const pending=Math.max(0,late-comp)+early;
+    const end=String(day.scheduled_end).slice(0,5);
+    const {earlyMinutes:early,compensationMinutes:comp,pendingMinutes:pending}=computeClosure(await activePolicy(),{
+      lateMinutes:Number(day.late_minutes||0),
+      minutesAfterScheduledEnd:Math.max(0,minutes(time)-minutes(end)),
+      earlyExitMinutes:Math.max(0,minutes(end)-minutes(time)),
+    });
     day=(await sql`UPDATE attendance_days SET exit_at=(${occurred}::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires'),early_minutes=${early},compensation_minutes=${comp},pending_minutes=${pending},exit_type='ADMIN',admin_note=${`Marcación manual: ${manualReason}${note?` - ${note}`:""}`},updated_at=now() WHERE id=${day.id} RETURNING *`)[0];
     const ev=(await sql`INSERT INTO attendance_events(attendance_day_id,employee_id,event_type,occurred_at,metadata) VALUES(${day.id},${employeeId},'EXIT',(${occurred}::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires'),${metadata}::jsonb) RETURNING id,occurred_at`)[0];
     await sql`INSERT INTO attendance_intervals(attendance_day_id,employee_id,exit_event_id,exited_at) VALUES(${day.id},${employeeId},${ev.id},${ev.occurred_at})`;

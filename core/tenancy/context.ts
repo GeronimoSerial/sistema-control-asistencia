@@ -84,6 +84,21 @@ export const currentOrganization = cache(async (): Promise<Organization | null> 
   return null;
 });
 
+/**
+ * Identificador de la organización del request, o `null` si todavía no hay ninguna instalada.
+ *
+ * Nunca lanza: durante la transición las tablas de tenancy pueden no existir aún, y en ese caso
+ * quien llama debe poder seguir con el comportamiento anterior en vez de romper la pantalla.
+ */
+export const currentOrganizationId = cache(async (): Promise<string | null> => {
+  try {
+    const organization = await currentOrganization();
+    return organization?.id ?? null;
+  } catch {
+    return null;
+  }
+});
+
 export const currentContext = cache(async (): Promise<OrganizationContext | null> => {
   const organization = await currentOrganization();
   if (!organization) return null;
