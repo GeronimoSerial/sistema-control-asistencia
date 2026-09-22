@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { registrarAusencia, anularAusencia, emptyState, type ActionState } from "./actions";
+import { registrarAusencia, anularAusencia } from "./actions";
+import { emptyState, type ActionState } from "./shared";
 
 export type Option = { id: string; label: string; national_id: string };
 

@@ -1,14 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import {
-  guardarPersona,
-  generarPin,
-  cambiarEstado,
-  desvincularDispositivo,
-  emptyState,
-  type ActionState,
-} from "./actions";
+import { guardarPersona, generarPin, cambiarEstado, desvincularDispositivo } from "./actions";
+import { emptyState, type ActionState } from "./shared";
 
 export type PersonRow = {
   id: string;

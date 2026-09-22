@@ -1,14 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import {
-  marcarManual,
-  clasificarIntervalo,
-  MANUAL_REASONS,
-  INTERVAL_REASONS,
-  emptyState,
-  type ActionState,
-} from "./actions";
+import { marcarManual, clasificarIntervalo } from "./actions";
+import { MANUAL_REASONS, INTERVAL_REASONS, emptyState, type ActionState } from "./shared";
 
 export type Option = { id: string; label: string };
 

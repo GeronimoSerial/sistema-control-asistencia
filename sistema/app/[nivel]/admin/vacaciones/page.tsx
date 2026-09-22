@@ -4,7 +4,7 @@ import { loadEntitlementScale, loadEntitlement, usedDaysInYear } from "@/core/ab
 import { completedYearsBetween } from "@/core/absence/entitlement";
 import { zonedParts } from "@/core/platform/time";
 import VacacionesPanel, { type PersonVacation } from "./VacacionesPanel";
-import { SCALE_CODE } from "./actions";
+import { SCALE_CODE } from "./shared";
 
 export const dynamic = "force-dynamic";
 

@@ -4,33 +4,11 @@ import { revalidatePath } from "next/cache";
 import { sessionWith } from "@/lib/session";
 import { markEntry, markExit, markReentry, classifyInterval, MarkError } from "@/core/attendance/service";
 import { zonedDateTimeToUtc } from "@/core/platform/time";
-
-export type ActionState = { error: string | null; message: string | null };
-export const emptyState: ActionState = { error: null, message: null };
+import { type ActionState, MANUAL_REASONS, INTERVAL_REASONS } from "./shared";
 
 function fail(error: string): ActionState {
   return { error, message: null };
 }
-
-/** Por qué hubo que registrar el movimiento a mano. */
-export const MANUAL_REASONS = [
-  { value: "BROKEN_PHONE", label: "Teléfono roto o sin batería" },
-  { value: "DEVICE_PROBLEM", label: "Problema con el dispositivo vinculado" },
-  { value: "SYSTEM_FAILURE", label: "Falla del sistema o de la conexión" },
-  { value: "MISSED_MARK", label: "Olvido de marcación" },
-  { value: "OTHER", label: "Otra causa" },
-];
-
-/** Qué fue la salida intermedia y si cuenta como tiempo trabajado. */
-export const INTERVAL_REASONS = [
-  { value: "COMMISSION", label: "Comisión de servicio", counts: true },
-  { value: "AUTHORIZED_PERMISSION", label: "Permiso autorizado", counts: true },
-  { value: "MEDICAL", label: "Atención médica", counts: true },
-  { value: "LEAVE_HOURS", label: "Horas de licencia", counts: false },
-  { value: "PERSONAL", label: "Motivo particular", counts: false },
-  { value: "UNJUSTIFIED", label: "Sin justificar", counts: false },
-  { value: "OTHER", label: "Otro", counts: false },
-];
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;

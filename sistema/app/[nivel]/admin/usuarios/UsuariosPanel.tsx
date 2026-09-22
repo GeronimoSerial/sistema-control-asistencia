@@ -1,13 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import {
-  guardarUsuario,
-  restablecerClave,
-  alternarUsuario,
-  emptyState,
-  type ActionState,
-} from "./actions";
+import { guardarUsuario, restablecerClave, alternarUsuario } from "./actions";
+import { emptyState, type ActionState } from "./shared";
 
 export type RoleOption = { id: string; code: string; name: string; permissions: number };
 

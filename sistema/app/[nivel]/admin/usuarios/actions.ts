@@ -4,10 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sessionWith } from "@/lib/session";
 import { setPassword, countUsersWithPermission } from "@/core/identity/auth";
 import { hashSecret } from "@/core/platform/secrets";
-
-export type ActionState = { error: string | null; message: string | null };
-export const emptyState: ActionState = { error: null, message: null };
-
+import { type ActionState } from "./shared";
 
 function fail(error: string): ActionState {
   return { error, message: null };

@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { guardarDerecho, emptyState, type ActionState } from "./actions";
+import { guardarDerecho } from "./actions";
+import { emptyState, type ActionState } from "./shared";
 
 export type PersonVacation = {
   id: string;

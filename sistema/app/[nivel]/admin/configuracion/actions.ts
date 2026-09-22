@@ -4,9 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sessionWith } from "@/lib/session";
 import { allDefinitions, validateSetting } from "@/core/config/definitions";
 import { setSetting } from "@/core/config/store";
-
-export type ActionState = { error: string | null; message: string | null };
-export const emptyState: ActionState = { error: null, message: null };
+import { type ActionState } from "./shared";
 
 function fail(error: string): ActionState {
   return { error, message: null };

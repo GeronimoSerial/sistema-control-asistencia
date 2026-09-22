@@ -1,13 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  guardarConfiguracion,
-  guardarPolitica,
-  guardarSede,
-  emptyState,
-  type ActionState,
-} from "./actions";
+import { guardarConfiguracion, guardarPolitica, guardarSede } from "./actions";
+import { emptyState, type ActionState } from "./shared";
 
 export type Definition = {
   key: string;

@@ -5,9 +5,7 @@ import { sessionWith } from "@/lib/session";
 import { loadAbsenceTypes, consumptionFor } from "@/core/absence/repository";
 import { canRegister } from "@/core/absence/quota";
 import { computeDays } from "@/core/absence/days";
-
-export type ActionState = { error: string | null; message: string | null; warning: string | null };
-export const emptyState: ActionState = { error: null, message: null, warning: null };
+import { type ActionState } from "./shared";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 

@@ -4,11 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sessionWith } from "@/lib/session";
 import { loadEntitlementScale } from "@/core/absence/repository";
 import { evaluateEntitlement } from "@/core/absence/entitlement";
-
-export type ActionState = { error: string | null; message: string | null };
-export const emptyState: ActionState = { error: null, message: null };
-
-export const SCALE_CODE = "VACATION";
+import { type ActionState, SCALE_CODE } from "./shared";
 
 function fail(error: string): ActionState {
   return { error, message: null };
