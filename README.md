@@ -72,3 +72,18 @@ El Administrador puede asignar contraseñas temporales a usuarios y exigir su ca
 
 ## V1.25.1 - Consolidación V1.24 + V1.25
 Incluye el tablero resumen de Legajos y buscador del Resumen diario de V1.24 junto con el restablecimiento de contraseñas de V1.25.
+
+---
+
+## Refactor en curso — rama `refactor/agnostic-core`
+
+Se está trabajando en paralelo para separar el motor del sistema de las reglas del organismo, y
+poder construir después un módulo de administración. La rama no cambia el comportamiento actual:
+todo camino nuevo tiene respaldo al anterior.
+
+- [`docs/ESTADO-DEL-REFACTOR.md`](docs/ESTADO-DEL-REFACTOR.md) — **empezar por acá.** Qué hay en
+  la rama, qué garantías tiene, cómo verificarla y qué decisiones quedan pendientes.
+- [`docs/REFACTOR-AGNOSTICO.md`](docs/REFACTOR-AGNOSTICO.md) — el plan completo: inventario de
+  acoplamientos, arquitectura objetivo y fases.
+- [`docs/DESARROLLO-LOCAL.md`](docs/DESARROLLO-LOCAL.md) — cómo levantarlo con una base propia.
+- [`core/README.md`](core/README.md) — qué reemplaza cada módulo del núcleo.
