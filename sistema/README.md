@@ -100,9 +100,13 @@ npm run demo:identidad    # autenticación, permisos y aislamiento entre niveles
 npm run demo:licencias    # cómputo de días y cuotas
 npm run demo:configuracion # validación de parámetros y resguardo del último administrador
 npm run demo:gestion      # marcación manual, clasificación de salidas y vacaciones
+npm run demo:correcciones # corrección y anulación de movimientos, y migración de bases viejas
+npm run verify:acciones   # ningún archivo "use server" exporta algo que no sea una función async
 ```
 
-Las siete corren contra bases temporales y no tocan `data/`.
+Las ocho primeras corren contra bases temporales y no tocan `data/`. `verify:acciones` no toca la
+base: lee los archivos de `app/` y adelanta un error que, si no, aparecería recién al abrir la
+pantalla en el navegador.
 
 ## El panel
 
@@ -129,6 +133,25 @@ porque son distintos en cada una.
 
 El teléfono queda vinculado recién al registrar el primer movimiento, no al identificarse.
 
+### Cuando algo queda mal cargado
+
+Desde **Registros** se puede corregir la hora de un movimiento o anularlo. Con dos reglas:
+
+**Nada se borra.** Un movimiento anulado sigue en la base, marcado, con quién lo anuló y por qué;
+deja de contar pero no desaparece del historial. Una corrección guarda además la hora original, y
+una segunda corrección no la pisa.
+
+**La jornada tiene que seguir siendo posible.** Antes de escribir, el sistema arma la secuencia
+que quedaría y la valida: tiene que empezar por una entrada, alternar salidas y reingresos, y no
+tener dos movimientos en el mismo instante. Esto obliga a deshacer de atrás para adelante —para
+anular la entrada hay que anular antes lo que vino después—, que es incómodo a propósito: la
+alternativa es dejar días que el cálculo interpretaría de cualquier manera.
+
+Lo demás se acomoda solo. La tardanza, la compensación y el cierre salen de `recomputeDay()`, que
+lee los movimientos vigentes, así que no hay ningún número que haya que ajustar a mano. Los
+intervalos siguen a sus movimientos: corregir una salida mueve el inicio del intervalo, anular un
+reingreso lo vuelve a abrir y borra su clasificación, anular una salida anula el intervalo entero.
+
 ## Antes de ponerlo en producción
 
 **Hace falta HTTPS.** Los navegadores bloquean la geolocalización fuera de un contexto seguro. Si
@@ -149,12 +172,11 @@ sobrevivir a los despliegues.
 
 ## Lo que todavía no está
 
-El módulo de administración está completo: panel del día, registros con marcación manual y
-clasificación de salidas intermedias, padrón, licencias, vacaciones, usuarios y configuración.
+El módulo de administración está completo: panel del día, registros con marcación manual,
+corrección y anulación de movimientos, clasificación de salidas intermedias, padrón, licencias,
+vacaciones, usuarios y configuración.
 
-Falta corregir la hora de un movimiento ya registrado —hoy se puede agregar uno nuevo pero no
-editar el horario de uno existente—, y el alta de niveles y sedes nuevas desde pantalla, que
-sigue siendo por línea de comandos.
+Falta el alta de niveles y sedes nuevas desde pantalla, que sigue siendo por línea de comandos.
 
 La pantalla de configuración se genera desde el registro de definiciones de `core/config`: cada
 parámetro declara su tipo, su ámbito, su valor por defecto y su validación en un solo lugar.

@@ -146,6 +146,13 @@ CREATE TABLE IF NOT EXISTS attendance_days (
 );
 CREATE INDEX IF NOT EXISTS idx_attendance_days_date ON attendance_days(work_date);
 
+-- Las siete últimas columnas son la corrección administrativa: un movimiento mal cargado no se
+-- borra, se anula, y la fila queda con quién lo hizo y por qué. original_occurred_at guarda la
+-- hora con la que se marcó originalmente y sólo se escribe en la primera corrección, para que no
+-- se pierda detrás de una segunda.
+--
+-- Los comentarios van acá afuera y no entre las columnas a propósito: ALTER TABLE reescribe el
+-- texto del CREATE guardado en el esquema, y un comentario de línea en el medio lo deja cortado.
 CREATE TABLE IF NOT EXISTS attendance_events (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   attendance_day_id INTEGER REFERENCES attendance_days(id) ON DELETE SET NULL,
@@ -157,10 +164,19 @@ CREATE TABLE IF NOT EXISTS attendance_events (
   longitude         REAL,
   accuracy          REAL,
   distance_meters   REAL,
-  metadata          TEXT
+  metadata          TEXT,
+  voided_at            TEXT,
+  voided_by            TEXT,
+  void_reason          TEXT,
+  original_occurred_at TEXT,
+  corrected_by         TEXT,
+  corrected_at         TEXT,
+  correction_reason    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_attendance_events_day ON attendance_events(attendance_day_id, occurred_at);
 
+-- voided_at: un intervalo existe porque existe la salida que lo abrió. Si esa salida se anula, el
+-- intervalo deja de describir algo ocurrido y se anula con ella.
 CREATE TABLE IF NOT EXISTS attendance_intervals (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   attendance_day_id INTEGER NOT NULL REFERENCES attendance_days(id) ON DELETE CASCADE,
@@ -175,10 +191,11 @@ CREATE TABLE IF NOT EXISTS attendance_intervals (
   classified_by     TEXT,
   classified_at     TEXT,
   created_at        TEXT NOT NULL,
-  updated_at        TEXT NOT NULL
+  updated_at        TEXT NOT NULL,
+  voided_at         TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_intervals_open
-  ON attendance_intervals(attendance_day_id) WHERE reentered_at IS NULL;
+  ON attendance_intervals(attendance_day_id) WHERE reentered_at IS NULL AND voided_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS qr_tokens (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -349,11 +366,47 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
 `;
 
 /**
+ * Columnas agregadas después de que hubiera bases en uso.
+ *
+ * `CREATE TABLE IF NOT EXISTS` no toca una tabla que ya existe, así que una columna nueva no
+ * llega sola a las bases creadas antes. Se agregan acá, comparando contra `PRAGMA table_info`:
+ * agregar una columna es barato y no reescribe la tabla, así que puede correr en cada arranque.
+ */
+const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
+  { table: "attendance_events", column: "voided_at", definition: "TEXT" },
+  { table: "attendance_events", column: "voided_by", definition: "TEXT" },
+  { table: "attendance_events", column: "void_reason", definition: "TEXT" },
+  { table: "attendance_events", column: "original_occurred_at", definition: "TEXT" },
+  { table: "attendance_events", column: "corrected_by", definition: "TEXT" },
+  { table: "attendance_events", column: "corrected_at", definition: "TEXT" },
+  { table: "attendance_events", column: "correction_reason", definition: "TEXT" },
+  { table: "attendance_intervals", column: "voided_at", definition: "TEXT" },
+];
+
+function applyAddedColumns(db: import("node:sqlite").DatabaseSync): void {
+  for (const { table, column, definition } of ADDED_COLUMNS) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+    if (columns.some((existing) => existing.name === column)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+
+  // El índice de intervalo abierto se creó sin contemplar los anulados: en una base vieja sigue
+  // con el predicado anterior y rechazaría reabrir un intervalo. Se rehace con el predicado
+  // completo; recrearlo es inmediato sobre tablas de este tamaño.
+  db.exec(`
+    DROP INDEX IF EXISTS idx_intervals_open;
+    CREATE UNIQUE INDEX idx_intervals_open
+      ON attendance_intervals(attendance_day_id) WHERE reentered_at IS NULL AND voided_at IS NULL;
+  `);
+}
+
+/**
  * Aplica el esquema a la base de un nivel y siembra el catálogo de permisos.
  * Idempotente: se puede volver a ejecutar sin efecto.
  */
 export function initLevel(db: import("node:sqlite").DatabaseSync): void {
   db.exec(LEVEL_SCHEMA_SQL);
+  applyAddedColumns(db);
 
   const insertPermission = db.prepare(
     `INSERT INTO permissions (code, resource, action, description) VALUES (?, ?, ?, ?)

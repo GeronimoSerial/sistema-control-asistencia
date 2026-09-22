@@ -2,9 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { sessionWith } from "@/lib/session";
-import { markEntry, markExit, markReentry, classifyInterval, MarkError } from "@/core/attendance/service";
+import {
+  markEntry,
+  markExit,
+  markReentry,
+  classifyInterval,
+  correctMovement,
+  voidMovement,
+  MarkError,
+} from "@/core/attendance/service";
 import { zonedDateTimeToUtc } from "@/core/platform/time";
-import { type ActionState, MANUAL_REASONS, INTERVAL_REASONS } from "./shared";
+import { type ActionState, MANUAL_REASONS, INTERVAL_REASONS, CORRECTION_REASONS } from "./shared";
 
 function fail(error: string): ActionState {
   return { error, message: null };
@@ -20,6 +28,17 @@ const MARK_ERRORS: Record<string, string> = {
   NO_ENTRY: "No se puede registrar una salida sin una entrada previa.",
   EXIT_NOT_ALLOWED: "La secuencia actual no admite una salida.",
   REENTRY_NOT_ALLOWED: "La secuencia actual no admite un reingreso.",
+  EVENT_NOT_FOUND: "El movimiento ya no existe.",
+  EVENT_VOIDED: "El movimiento está anulado: no se puede corregir.",
+  ALREADY_VOIDED: "El movimiento ya estaba anulado.",
+  EVENT_WITHOUT_DAY: "El movimiento no está asociado a ninguna jornada.",
+  REASON_REQUIRED: "Indicá el motivo de la corrección.",
+  OUT_OF_DAY: "La hora nueva cae en otra jornada. Anulá el movimiento y cargalo en la fecha que corresponde.",
+  MUST_START_WITH_ENTRY:
+    "La jornada quedaría empezando por algo que no es una entrada. Corregí o anulá desde el último movimiento hacia atrás.",
+  DUPLICATE_ENTRY: "La jornada quedaría con dos entradas.",
+  OUT_OF_ORDER: "Quedarían dos movimientos seguidos en el mismo sentido. Corregí desde el último hacia atrás.",
+  SAME_INSTANT: "Ya hay otro movimiento a esa misma hora.",
 };
 
 /**
@@ -127,4 +146,75 @@ export async function clasificarIntervalo(
 
   revalidatePath(`/${nivel}/admin/registros`);
   return { error: null, message: "Salida clasificada." };
+}
+
+/**
+ * Corrige la hora de un movimiento ya registrado.
+ *
+ * Es la contracara de la marcación manual: esa agrega lo que faltó, ésta arregla lo que quedó mal.
+ * Ambas terminan en `recomputeDay()`, así que la tardanza y la compensación se recalculan con la
+ * misma regla y no hace falta tocar la jornada a mano.
+ */
+export async function corregirMovimiento(
+  _previous: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const nivel = String(formData.get("nivel") ?? "");
+  const session = await sessionWith(nivel, "attendance.write");
+  if (!session) return fail("No tenés permiso para corregir registros.");
+
+  const eventId = Number(formData.get("eventId"));
+  const hora = String(formData.get("hora") ?? "");
+  const motivo = String(formData.get("motivo") ?? "");
+  const nota = String(formData.get("nota") ?? "").trim().slice(0, 500);
+
+  if (!Number.isInteger(eventId)) return fail("Movimiento inválido.");
+  if (!TIME.test(hora)) return fail("La hora no es válida.");
+  if (!CORRECTION_REASONS.some((reason) => reason.value === motivo)) return fail("Elegí un motivo.");
+  if (motivo === "OTHER" && !nota) return fail("Para «otra causa» hace falta una observación.");
+
+  try {
+    correctMovement(session.resolved.context, eventId, {
+      time: hora,
+      reason: `${motivo}${nota ? ` — ${nota}` : ""}`,
+      actor: session.user.email,
+    });
+  } catch (error) {
+    if (error instanceof MarkError) return fail(MARK_ERRORS[error.code] ?? "No se pudo corregir.");
+    throw error;
+  }
+
+  revalidatePath(`/${nivel}/admin/registros`);
+  return { error: null, message: "Movimiento corregido." };
+}
+
+/** Anula un movimiento cargado por error. La fila queda en la base, marcada y con su motivo. */
+export async function anularMovimiento(
+  _previous: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const nivel = String(formData.get("nivel") ?? "");
+  const session = await sessionWith(nivel, "attendance.write");
+  if (!session) return fail("No tenés permiso para anular registros.");
+
+  const eventId = Number(formData.get("eventId"));
+  const motivo = String(formData.get("motivo") ?? "");
+  const nota = String(formData.get("nota") ?? "").trim().slice(0, 500);
+
+  if (!Number.isInteger(eventId)) return fail("Movimiento inválido.");
+  if (!CORRECTION_REASONS.some((reason) => reason.value === motivo)) return fail("Elegí un motivo.");
+  if (motivo === "OTHER" && !nota) return fail("Para «otra causa» hace falta una observación.");
+
+  try {
+    voidMovement(session.resolved.context, eventId, {
+      reason: `${motivo}${nota ? ` — ${nota}` : ""}`,
+      actor: session.user.email,
+    });
+  } catch (error) {
+    if (error instanceof MarkError) return fail(MARK_ERRORS[error.code] ?? "No se pudo anular.");
+    throw error;
+  }
+
+  revalidatePath(`/${nivel}/admin/registros`);
+  return { error: null, message: "Movimiento anulado." };
 }

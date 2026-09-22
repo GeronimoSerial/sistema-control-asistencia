@@ -18,6 +18,15 @@ export const MANUAL_REASONS = [
   { value: "OTHER", label: "Otra causa" },
 ];
 
+/** Por qué se corrige o se anula un movimiento ya registrado. */
+export const CORRECTION_REASONS = [
+  { value: "WRONG_TIME", label: "La hora quedó mal cargada" },
+  { value: "WRONG_PERSON", label: "Se registró sobre el agente equivocado" },
+  { value: "DUPLICATE", label: "Movimiento duplicado" },
+  { value: "AUTO_CLOSE_WRONG", label: "El cierre automático no corresponde" },
+  { value: "OTHER", label: "Otra causa" },
+];
+
 /** Qué fue la salida intermedia y si cuenta como tiempo trabajado. */
 export const INTERVAL_REASONS = [
   { value: "COMMISSION", label: "Comisión de servicio", counts: true },

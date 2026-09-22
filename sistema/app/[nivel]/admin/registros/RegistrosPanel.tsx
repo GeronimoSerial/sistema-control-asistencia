@@ -1,8 +1,14 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { marcarManual, clasificarIntervalo } from "./actions";
-import { MANUAL_REASONS, INTERVAL_REASONS, emptyState, type ActionState } from "./shared";
+import { Fragment, useActionState, useState } from "react";
+import { marcarManual, clasificarIntervalo, corregirMovimiento, anularMovimiento } from "./actions";
+import {
+  MANUAL_REASONS,
+  INTERVAL_REASONS,
+  CORRECTION_REASONS,
+  emptyState,
+  type ActionState,
+} from "./shared";
 
 export type Option = { id: string; label: string };
 
@@ -12,8 +18,16 @@ export type MovementRow = {
   person_id: string;
   event_type: string;
   local_time: string;
+  /** La misma hora como `HH:MM`, para precargar el campo de corrección. */
+  edit_time: string;
   source: string | null;
   note: string | null;
+  voided: boolean;
+  voided_by: string | null;
+  void_reason: string | null;
+  corrected_by: string | null;
+  correction_reason: string | null;
+  original_time: string | null;
 };
 
 export type IntervalRow = {
@@ -51,6 +65,7 @@ export default function RegistrosPanel({
   intervals,
   puedeMarcar,
   puedeClasificar,
+  puedeCorregir,
 }: {
   nivel: string;
   fecha: string;
@@ -59,11 +74,17 @@ export default function RegistrosPanel({
   intervals: IntervalRow[];
   puedeMarcar: boolean;
   puedeClasificar: boolean;
+  puedeCorregir: boolean;
 }) {
   const [markState, marcar, marcando] = useActionState(marcarManual, emptyState);
   const [classState, clasificar] = useActionState(clasificarIntervalo, emptyState);
+  const [fixState, corregir, corrigiendo] = useActionState(corregirMovimiento, emptyState);
+  const [voidState, anular, anulando] = useActionState(anularMovimiento, emptyState);
   const [motivo, setMotivo] = useState(MANUAL_REASONS[0].value);
   const [abierto, setAbierto] = useState(false);
+  // Qué fila está desplegada y para qué. Una sola a la vez: la corrección pide confirmar un dato
+  // puntual, no comparar varias.
+  const [editando, setEditando] = useState<{ id: number; modo: "fix" | "void" } | null>(null);
 
   const pendientes = intervals.filter((row) => row.counts_as_work === null && row.reentry_time);
 
@@ -81,6 +102,8 @@ export default function RegistrosPanel({
 
       <Aviso state={markState} />
       <Aviso state={classState} />
+      <Aviso state={fixState} />
+      <Aviso state={voidState} />
 
       {puedeMarcar && !abierto && (
         <button
@@ -210,22 +233,151 @@ export default function RegistrosPanel({
                 <th>Movimiento</th>
                 <th>Origen</th>
                 <th>Observación</th>
+                {puedeCorregir && <th />}
               </tr>
             </thead>
             <tbody>
-              {movements.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.local_time}</td>
-                  <td>{row.person}</td>
-                  <td>{MOVEMENT_LABELS[row.event_type] ?? row.event_type}</td>
-                  <td>
-                    {row.source === "ADMIN" ? <span className="tag warn">Manual</span>
-                      : row.source === "AUTO" ? <span className="tag plain">Automático</span>
-                      : <span className="tag ok">Agente</span>}
-                  </td>
-                  <td>{row.note ?? "—"}</td>
-                </tr>
-              ))}
+              {movements.map((row) => {
+                const desplegada = editando?.id === row.id ? editando.modo : null;
+                return (
+                  <Fragment key={row.id}>
+                    <tr style={row.voided ? { opacity: 0.55 } : undefined}>
+                      <td style={row.voided ? { textDecoration: "line-through" } : undefined}>
+                        {row.local_time}
+                      </td>
+                      <td>{row.person}</td>
+                      <td>
+                        {MOVEMENT_LABELS[row.event_type] ?? row.event_type}
+                        {row.voided && <> <span className="tag bad">Anulado</span></>}
+                        {!row.voided && row.corrected_by && <> <span className="tag warn">Corregido</span></>}
+                      </td>
+                      <td>
+                        {row.source === "ADMIN" ? <span className="tag warn">Manual</span>
+                          : row.source === "AUTO" ? <span className="tag plain">Automático</span>
+                          : <span className="tag ok">Agente</span>}
+                      </td>
+                      <td>
+                        {row.note ?? "—"}
+                        {row.voided && row.void_reason && (
+                          <div className="muted" style={{ fontSize: 13 }}>
+                            Anulado por {row.voided_by}: {row.void_reason}
+                          </div>
+                        )}
+                        {!row.voided && row.corrected_by && (
+                          <div className="muted" style={{ fontSize: 13 }}>
+                            Antes {row.original_time} · corrigió {row.corrected_by}
+                            {row.correction_reason ? `: ${row.correction_reason}` : ""}
+                          </div>
+                        )}
+                      </td>
+                      {puedeCorregir && (
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          {row.voided ? (
+                            <span className="muted">—</span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() =>
+                                  setEditando(desplegada === "fix" ? null : { id: row.id, modo: "fix" })
+                                }
+                                style={{ width: "auto", padding: "6px 12px", fontSize: 14 }}
+                              >
+                                Corregir
+                              </button>{" "}
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() =>
+                                  setEditando(desplegada === "void" ? null : { id: row.id, modo: "void" })
+                                }
+                                style={{ width: "auto", padding: "6px 12px", fontSize: 14 }}
+                              >
+                                Anular
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+
+                    {desplegada && (
+                      <tr>
+                        <td colSpan={puedeCorregir ? 6 : 5}>
+                          <form action={desplegada === "fix" ? corregir : anular} className="card">
+                            <input type="hidden" name="nivel" value={nivel} />
+                            <input type="hidden" name="eventId" value={row.id} />
+                            <strong>
+                              {desplegada === "fix" ? "Corregir la hora" : "Anular el movimiento"}
+                            </strong>{" "}
+                            <span className="muted">
+                              {MOVEMENT_LABELS[row.event_type] ?? row.event_type} de {row.person},{" "}
+                              {row.local_time}
+                            </span>
+                            <div className="form-grid" style={{ marginTop: 10 }}>
+                              {desplegada === "fix" && (
+                                <div>
+                                  <label htmlFor={`hora-${row.id}`}>Hora correcta</label>
+                                  <input
+                                    id={`hora-${row.id}`}
+                                    name="hora"
+                                    type="time"
+                                    required
+                                    defaultValue={row.edit_time}
+                                  />
+                                </div>
+                              )}
+                              <div>
+                                <label htmlFor={`motivo-fix-${row.id}`}>Motivo</label>
+                                <select
+                                  id={`motivo-fix-${row.id}`}
+                                  name="motivo"
+                                  defaultValue={
+                                    row.event_type === "AUTO_EXIT" ? "AUTO_CLOSE_WRONG" : "WRONG_TIME"
+                                  }
+                                >
+                                  {CORRECTION_REASONS.map((reason) => (
+                                    <option key={reason.value} value={reason.value}>
+                                      {reason.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor={`nota-fix-${row.id}`}>Observación</label>
+                                <input id={`nota-fix-${row.id}`} name="nota" />
+                              </div>
+                            </div>
+                            <p className="muted" style={{ fontSize: 13 }}>
+                              {desplegada === "fix"
+                                ? "La jornada se recalcula sola: tardanza, compensación y cierre salen de los movimientos vigentes."
+                                : "El movimiento no se borra. Queda registrado como anulado, con quién lo anuló y por qué, y deja de contar."}
+                            </p>
+                            <div style={{ display: "flex", gap: 10 }}>
+                              <button
+                                type="submit"
+                                disabled={corrigiendo || anulando}
+                                style={{ width: "auto", padding: "10px 18px", fontSize: 15 }}
+                              >
+                                {desplegada === "fix" ? "Guardar corrección" : "Anular"}
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => setEditando(null)}
+                                style={{ width: "auto", padding: "10px 18px", fontSize: 15 }}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </form>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}

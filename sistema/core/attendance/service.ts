@@ -307,11 +307,19 @@ export function dayFor(ctx: LevelContext, personId: string, date: string): DayRo
     .get(personId, date) as unknown as DayRow | undefined) ?? null;
 }
 
+/**
+ * Movimientos vigentes de una jornada.
+ *
+ * Los anulados quedan en la tabla —son parte de la historia— pero no participan de ningún
+ * cálculo. Como `recomputeDay()` parte de acá, alcanza con este filtro para que una anulación se
+ * refleje en la tardanza, en la compensación y en el cierre sin tocar nada más.
+ */
 function movementsOf(ctx: LevelContext, dayId: number): EventRow[] {
   return ctx.db
     .prepare(
       `SELECT id, event_type, occurred_at, metadata FROM attendance_events
        WHERE attendance_day_id = ? AND event_type IN ('ENTRY','EXIT','REENTRY','AUTO_EXIT')
+         AND voided_at IS NULL
        ORDER BY occurred_at, id`
     )
     .all(dayId) as unknown as EventRow[];
@@ -544,7 +552,8 @@ export function markReentry(ctx: LevelContext, input: MarkInput): DayRow {
 
   const open = ctx.db
     .prepare(
-      `SELECT id FROM attendance_intervals WHERE attendance_day_id = ? AND reentered_at IS NULL
+      `SELECT id FROM attendance_intervals
+       WHERE attendance_day_id = ? AND reentered_at IS NULL AND voided_at IS NULL
        ORDER BY exited_at DESC LIMIT 1`
     )
     .get(day.id) as unknown as { id: number } | undefined;
@@ -574,7 +583,7 @@ export function pendingIntervals(ctx: LevelContext, date?: string) {
   const base = `SELECT i.id, i.person_id, i.exited_at, i.reentered_at, d.work_date
                 FROM attendance_intervals i
                 JOIN attendance_days d ON d.id = i.attendance_day_id
-                WHERE i.reentered_at IS NOT NULL AND i.counts_as_work IS NULL`;
+                WHERE i.reentered_at IS NOT NULL AND i.counts_as_work IS NULL AND i.voided_at IS NULL`;
   return (date
     ? ctx.db.prepare(`${base} AND d.work_date = ? ORDER BY i.exited_at`).all(date)
     : ctx.db.prepare(`${base} ORDER BY i.exited_at`).all()) as unknown as {
@@ -602,6 +611,225 @@ export function classifyInterval(
       input.reasonCode, input.countsAsWork ? 1 : 0, input.note ?? null,
       input.actor, new Date().toISOString(), new Date().toISOString(), intervalId
     );
+}
+
+/* ------------------------------------------------------------------ *
+ * Corrección de movimientos
+ * ------------------------------------------------------------------ */
+
+/**
+ * ¿Es válida esta secuencia de movimientos?
+ *
+ * Marcar es un acto encadenado: se entra, se sale, se vuelve a entrar. Agregar movimientos respeta
+ * la cadena porque cada marcación mira la anterior. Corregir puede romperla desde el medio —anular
+ * la entrada dejando la salida, adelantar un reingreso por detrás de la salida que lo precede—, y
+ * no hay ninguna marcación posterior que lo advierta.
+ *
+ * Por eso la regla se escribe una sola vez, acá, y tanto la corrección como la anulación la
+ * consultan **sobre el resultado** antes de escribirlo: si la jornada que quedaría no es una
+ * jornada posible, la operación no se hace. Es preferible obligar a deshacer en orden —primero el
+ * último movimiento, después el anterior— que permitir dejar el día en un estado que `recomputeDay`
+ * interpretaría de cualquier manera.
+ */
+export function sequenceProblem(
+  movements: { event_type: string; occurred_at: string }[],
+  policy: AttendancePolicy
+): string | null {
+  if (!movements.length) return null;
+
+  const ordered = [...movements].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
+  if (ordered[0].event_type !== "ENTRY") return "MUST_START_WITH_ENTRY";
+
+  const isIn = (type: string) => type === "ENTRY" || type === "REENTRY";
+  for (let i = 0; i < ordered.length; i++) {
+    const current = ordered[i];
+    if (i > 0) {
+      if (current.event_type === "ENTRY") return "DUPLICATE_ENTRY";
+      if (isIn(current.event_type) === isIn(ordered[i - 1].event_type)) return "OUT_OF_ORDER";
+      if (current.occurred_at === ordered[i - 1].occurred_at) return "SAME_INSTANT";
+    }
+    if (current.event_type === "REENTRY" && policy.movementSequence !== "MULTI") {
+      return "REENTRY_NOT_ALLOWED";
+    }
+  }
+  return null;
+}
+
+type StoredEvent = {
+  id: number;
+  attendance_day_id: number | null;
+  person_id: string;
+  event_type: string;
+  occurred_at: string;
+  original_occurred_at: string | null;
+  voided_at: string | null;
+};
+
+function storedEvent(ctx: LevelContext, eventId: number): StoredEvent | null {
+  return (ctx.db
+    .prepare(
+      `SELECT id, attendance_day_id, person_id, event_type, occurred_at, original_occurred_at, voided_at
+       FROM attendance_events WHERE id = ?`
+    )
+    .get(eventId) as unknown as StoredEvent | undefined) ?? null;
+}
+
+function audit(
+  ctx: LevelContext,
+  entry: {
+    actor: string;
+    action: string;
+    entityId: string;
+    previous?: unknown;
+    next?: unknown;
+    reason: string;
+  }
+): void {
+  ctx.db
+    .prepare(
+      `INSERT INTO audit_logs (actor, action, entity_type, entity_id, previous_value, new_value, reason, created_at)
+       VALUES (?, ?, 'attendance_event', ?, ?, ?, ?, ?)`
+    )
+    .run(
+      entry.actor, entry.action, entry.entityId,
+      entry.previous === undefined ? null : JSON.stringify(entry.previous),
+      entry.next === undefined ? null : JSON.stringify(entry.next),
+      entry.reason, new Date().toISOString()
+    );
+}
+
+/** Qué movimiento se corrige y con qué hora nueva. */
+export type CorrectionInput = {
+  /** Hora local `HH:MM` dentro de la misma jornada. */
+  time: string;
+  reason: string;
+  actor: string;
+};
+
+/**
+ * Cambia la hora de un movimiento ya registrado.
+ *
+ * La hora nueva se interpreta en la fecha de la jornada y en la zona del nivel, con el offset real
+ * de ese día: corregir una marcación de un día de invierno desde un día de verano no la desplaza.
+ * El movimiento no puede mudarse de jornada —eso sería otra cosa, no una corrección—, así que sólo
+ * se acepta una hora del mismo día.
+ */
+export function correctMovement(
+  ctx: LevelContext,
+  eventId: number,
+  input: CorrectionInput
+): void {
+  const event = storedEvent(ctx, eventId);
+  if (!event) throw new MarkError("EVENT_NOT_FOUND");
+  if (event.voided_at) throw new MarkError("EVENT_VOIDED");
+  if (!event.attendance_day_id) throw new MarkError("EVENT_WITHOUT_DAY");
+  if (!input.reason.trim()) throw new MarkError("REASON_REQUIRED");
+
+  const day = ctx.db
+    .prepare(`SELECT id, work_date FROM attendance_days WHERE id = ?`)
+    .get(event.attendance_day_id) as unknown as { id: number; work_date: string } | undefined;
+  if (!day) throw new MarkError("EVENT_WITHOUT_DAY");
+
+  const at = zonedDateTimeToUtc(ctx.timeZone, day.work_date, input.time);
+  if (localDate(ctx, at) !== day.work_date) throw new MarkError("OUT_OF_DAY");
+
+  const occurredAt = at.toISOString();
+  if (occurredAt === event.occurred_at) return;
+
+  const resulting = movementsOf(ctx, day.id).map((movement) =>
+    movement.id === eventId
+      ? { event_type: movement.event_type, occurred_at: occurredAt }
+      : { event_type: movement.event_type, occurred_at: movement.occurred_at }
+  );
+  const problem = sequenceProblem(resulting, ctx.policy);
+  if (problem) throw new MarkError(problem);
+
+  const now = new Date().toISOString();
+  ctx.db
+    .prepare(
+      `UPDATE attendance_events
+       SET occurred_at = ?,
+           original_occurred_at = COALESCE(original_occurred_at, ?),
+           corrected_by = ?, corrected_at = ?, correction_reason = ?
+       WHERE id = ?`
+    )
+    .run(occurredAt, event.occurred_at, input.actor, now, input.reason.trim(), eventId);
+
+  // El intervalo es la lectura de dos movimientos; si uno se mueve, el intervalo lo sigue.
+  ctx.db
+    .prepare(`UPDATE attendance_intervals SET exited_at = ?, updated_at = ? WHERE exit_event_id = ?`)
+    .run(occurredAt, now, eventId);
+  ctx.db
+    .prepare(`UPDATE attendance_intervals SET reentered_at = ?, updated_at = ? WHERE reentry_event_id = ?`)
+    .run(occurredAt, now, eventId);
+
+  audit(ctx, {
+    actor: input.actor,
+    action: "attendance.movement.correct",
+    entityId: String(eventId),
+    previous: { occurred_at: event.occurred_at },
+    next: { occurred_at: occurredAt },
+    reason: input.reason.trim(),
+  });
+
+  recomputeDay(ctx, day.id);
+}
+
+/**
+ * Anula un movimiento registrado por error.
+ *
+ * No borra: la fila queda, con quién la anuló y por qué, y deja de contar. Sólo se puede anular si
+ * lo que queda sigue siendo una jornada posible, lo que en la práctica obliga a deshacer desde el
+ * final hacia atrás.
+ */
+export function voidMovement(
+  ctx: LevelContext,
+  eventId: number,
+  input: { reason: string; actor: string }
+): void {
+  const event = storedEvent(ctx, eventId);
+  if (!event) throw new MarkError("EVENT_NOT_FOUND");
+  if (event.voided_at) throw new MarkError("ALREADY_VOIDED");
+  if (!event.attendance_day_id) throw new MarkError("EVENT_WITHOUT_DAY");
+  if (!input.reason.trim()) throw new MarkError("REASON_REQUIRED");
+
+  const dayId = event.attendance_day_id;
+  const resulting = movementsOf(ctx, dayId)
+    .filter((movement) => movement.id !== eventId)
+    .map((movement) => ({ event_type: movement.event_type, occurred_at: movement.occurred_at }));
+  const problem = sequenceProblem(resulting, ctx.policy);
+  if (problem) throw new MarkError(problem);
+
+  const now = new Date().toISOString();
+  ctx.db
+    .prepare(`UPDATE attendance_events SET voided_at = ?, voided_by = ?, void_reason = ? WHERE id = ?`)
+    .run(now, input.actor, input.reason.trim(), eventId);
+
+  // Una salida anulada se lleva el intervalo que abrió: sin salida no hay ausencia intermedia.
+  ctx.db
+    .prepare(`UPDATE attendance_intervals SET voided_at = ?, updated_at = ? WHERE exit_event_id = ?`)
+    .run(now, now, eventId);
+
+  // Un reingreso anulado deja el intervalo abierto otra vez, y lo que se hubiera clasificado deja
+  // de aplicar: describía una ausencia con principio y fin que ya no tiene fin.
+  ctx.db
+    .prepare(
+      `UPDATE attendance_intervals
+       SET reentry_event_id = NULL, reentered_at = NULL, reason_code = NULL, counts_as_work = NULL,
+           classified_by = NULL, classified_at = NULL, updated_at = ?
+       WHERE reentry_event_id = ?`
+    )
+    .run(now, eventId);
+
+  audit(ctx, {
+    actor: input.actor,
+    action: "attendance.movement.void",
+    entityId: String(eventId),
+    previous: { event_type: event.event_type, occurred_at: event.occurred_at },
+    reason: input.reason.trim(),
+  });
+
+  recomputeDay(ctx, dayId);
 }
 
 /* ------------------------------------------------------------------ *
