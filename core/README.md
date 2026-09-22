@@ -26,22 +26,9 @@ Reimplementa la lógica vieja tal cual y comprueba que el modelo declarativo, al
 `packs/ar-corrientes-dge/pack.json`, da los mismos números. Cualquier cambio en los evaluadores
 tiene que seguir pasando esas comprobaciones.
 
-## Qué ya está conectado
-
-| Endpoint | Estado |
-|---|---|
-| `POST /api/platform/install` | Corre las migraciones, da de alta el organismo y aplica el pack. Protegido con `SETUP_TOKEN`. |
-| `GET /api/admin/leave-balance` | Usa `absence/quota.ts`. Cae en el catálogo viejo si el organismo no fue instalado (`source: "LEGACY"`). |
-| `GET/POST /api/admin/vacation-status` | Usa `absence/entitlement.ts`, con el mismo respaldo. |
-| `lib/attendance.ts` y `records/route.ts` | Usan `attendance/policy.ts`. Las tres copias de la regla de tardanza quedaron en una. |
-
-Cada camino nuevo tiene respaldo al comportamiento anterior, así que desplegar sin correr la
-instalación no cambia nada. El campo `source` de las respuestas dice qué motor contestó.
-
 ## Lo que todavía no está conectado
 
-La marca sigue escrita en las pantallas y las tablas de dominio todavía no tienen
-`organization_id`. El orden de las fases está en
+`core/` convive con el código actual pero aún no lo reemplaza. El orden de las fases está en
 [`docs/REFACTOR-AGNOSTICO.md`](../docs/REFACTOR-AGNOSTICO.md); lo hecho aquí cubre las fases 0 y 1
 y adelanta el modelo de datos de las fases 2, 4 y 5. Falta la migración `0002`, que agrega
 `organization_id` a las tablas de dominio y hace el backfill — es la única con riesgo de pérdida

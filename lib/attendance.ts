@@ -4,14 +4,6 @@ import { distanceMeters } from "@/lib/geo";
 import { argentinaParts, isoForArgentinaLocal, minutesDifferenceFromSchedule, minutesFromHHMM } from "@/lib/time";
 import { hashToken } from "@/lib/qr";
 import { pinLookup } from "@/lib/auth";
-import { currentOrganizationId } from "@/core/tenancy/context";
-import { loadAttendancePolicy } from "@/core/attendance/repository";
-import { computeClosure, computeLateness } from "@/core/attendance/policy";
-
-/** Política vigente del organismo del request. Cae en la configuración anterior si no hay. */
-async function activePolicy() {
-  return loadAttendancePolicy(await currentOrganizationId());
-}
 
 type LocationInput = { lat: number; lng: number; accuracy?: number | null };
 
@@ -125,10 +117,11 @@ export async function registerEntry(params: { employeeId: string; location: Loca
   if (context.leave) throw new Error("ON_LEAVE");
   if (context.attendance?.entry_at) throw new Error("ENTRY_EXISTS");
 
-  // La regla de tardanza ya no está escrita acá: es un dato de la política del organismo.
-  const policy = await activePolicy();
-  const rawLate = minutesDifferenceFromSchedule(String(context.schedule.start_time).slice(0, 5));
-  const lateMinutes = computeLateness(policy, rawLate);
+  const settings = await getOfficeSettings();
+  const tolerance = Number(settings?.lateness_tolerance_minutes || 15);
+  const rawLate = Math.max(0, minutesDifferenceFromSchedule(String(context.schedule.start_time).slice(0, 5)));
+  // Hasta la tolerancia no hay atraso. Si se supera, se computa el total desde la hora prevista.
+  const lateMinutes = rawLate > tolerance ? rawLate : 0;
 
   const rows = await sql`
     INSERT INTO attendance_days(
@@ -163,13 +156,11 @@ export async function registerExit(params: { employeeId: string; location: Locat
 
   const scheduledEnd = String(current.scheduled_end).slice(0, 5);
   const diffAfterEnd = minutesDifferenceFromSchedule(scheduledEnd);
-  const policy = await activePolicy();
-  const { earlyMinutes, compensationMinutes: compensation, pendingMinutes: pending } =
-    computeClosure(policy, {
-      lateMinutes: Number(current.late_minutes || 0),
-      minutesAfterScheduledEnd: Math.max(0, diffAfterEnd),
-      earlyExitMinutes: Math.max(0, -diffAfterEnd),
-    });
+  const afterMinutes = Math.max(0, diffAfterEnd);
+  const earlyMinutes = Math.max(0, -diffAfterEnd);
+  const lateMinutes = Number(current.late_minutes || 0);
+  const compensation = Math.min(lateMinutes, afterMinutes);
+  const pending = Math.max(0, lateMinutes - compensation) + earlyMinutes;
 
   const rows = await sql`
     UPDATE attendance_days
@@ -234,9 +225,8 @@ export async function registerReentry(params: { employeeId: string; location: Lo
 
 export async function autoCloseEligibleDays() {
   const sql = db();
-  const policy = await activePolicy();
-  if (policy.autoCloseMode === "NONE") return 0;
-  const grace = policy.autoCloseGraceMinutes;
+  const settings = await getOfficeSettings();
+  const grace = Number(settings?.auto_close_grace_minutes || 60);
   const nowParts = argentinaParts();
   const rows = await sql`
     SELECT id, employee_id, work_date::text, scheduled_end::text, late_minutes, entry_at
