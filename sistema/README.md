@@ -97,9 +97,10 @@ npm run verify:rules      # los evaluadores dan los mismos números que la lógi
 npm run demo:sqlite       # dos niveles reales, aislamiento y saldos
 npm run demo:asistencia   # flujo completo de marcación
 npm run demo:identidad    # autenticación, permisos y aislamiento entre niveles
+npm run demo:licencias    # cómputo de días y cuotas
 ```
 
-Las cuatro corren contra bases temporales y no tocan `data/`.
+Las cinco corren contra bases temporales y no tocan `data/`.
 
 ## El panel
 
@@ -146,8 +147,8 @@ sobrevivir a los despliegues.
 
 ## Lo que todavía no está
 
-Del módulo de administración están el panel del día y el padrón. Faltan las pantallas de
-licencias y saldos, configuración del nivel, usuarios y roles, clasificación de salidas
-intermedias y marcación manual excepcional.
+Del módulo de administración están el panel del día, el padrón y las licencias. Faltan la
+configuración del nivel, los usuarios y roles, la clasificación de salidas intermedias, la
+marcación manual excepcional y las vacaciones con su escala de derecho.
 
 Los niveles y las sedes se siguen creando por línea de comandos.

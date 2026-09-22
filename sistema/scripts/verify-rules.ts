@@ -105,7 +105,8 @@ for (const [annual, monthly] of [[0, 0], [3, 1], [5, 2], [6, 2], [6, 3], [2, 2]]
     art30b.totalRemainingDays,
     Math.min(Math.max(6 - annual, 0), Math.max(2 - monthly, 0))
   );
-  expect(`ART30B anual=${annual} mensual=${monthly} bloqueado`, art30b.blocked, annual >= 6 || monthly >= 2);
+  // Agotar la cuota justo es válido; lo que bloquea es excederla.
+  expect(`ART30B anual=${annual} mensual=${monthly} bloqueado`, art30b.blocked, annual > 6 || monthly > 2);
 }
 
 /* ------------------------------------------------------------------ *

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import AdminNav from "./AdminNav";
 import { currentSession } from "@/lib/session";
 import { endSession } from "@/lib/session";
 
@@ -35,6 +35,7 @@ export default async function AdminLayout({
   const links: { href: string; label: string; permission: string }[] = [
     { href: `/${nivel}/admin`, label: "Hoy", permission: "attendance.read" },
     { href: `/${nivel}/admin/personal`, label: "Personal", permission: "people.read" },
+    { href: `/${nivel}/admin/licencias`, label: "Licencias", permission: "absence.read" },
   ];
 
   return (
@@ -55,15 +56,11 @@ export default async function AdminLayout({
           </div>
         </div>
 
-        <nav className="admin-nav">
-          {links
+        <AdminNav
+          links={links
             .filter((link) => user.permissions.includes(link.permission))
-            .map((link) => (
-              <Link key={link.href} href={link.href}>
-                {link.label}
-              </Link>
-            ))}
-        </nav>
+            .map(({ href, label }) => ({ href, label }))}
+        />
 
         {children}
       </div>

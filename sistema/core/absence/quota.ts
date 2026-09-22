@@ -89,7 +89,7 @@ export type QuotaEvaluation = {
   excessDays: number;
   /** Días que todavía se pueden cargar sin caer en excedente. `null` si no hay tope. */
   totalRemainingDays: number | null;
-  /** `true` si un tramo agotado con `BLOCK` impide seguir cargando. */
+  /** `true` si hay días por encima de un tramo que no admite excedente. */
   blocked: boolean;
   warnings: string[];
 };
@@ -146,7 +146,10 @@ export function evaluateQuota(
     const remaining = tier.limitDays === null ? null : round2(Math.max(0, tier.limitDays - used));
     const exhausted = tier.limitDays !== null && used >= tier.limitDays;
 
-    if (exhausted && tier.onExhausted === "BLOCK") blocked = true;
+    // Bloquea el consumo que **excede** el tramo, no el que lo agota justo: registrar
+    // exactamente los días que quedaban es válido. Lo que no se admite es el sobrante, que en un
+    // tramo BLOCK no tiene adónde pasar.
+    if (tier.onExhausted === "BLOCK" && pending[tier.window] > 0) blocked = true;
     if (exhausted && tier.onExhausted === "WARN") {
       warnings.push(
         `${tier.label ?? rule.name}: tramo agotado (${tier.limitDays} días). Requiere autorización.`
