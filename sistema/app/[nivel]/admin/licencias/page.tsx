@@ -26,7 +26,8 @@ export default async function LicenciasPage({
   const types: TypeOption[] = loadAbsenceTypes(db).map((type) => ({
     code: type.code,
     name: type.name,
-    reference: type.reference,
+    // `reference` es opcional en la regla; la pantalla la trata siempre como texto o nada.
+    reference: type.reference ?? null,
     categoryCode: type.categoryCode,
     requiresDocument: type.requiresDocument,
     hasEventWindow: type.tiers.some((tier) => tier.window === "EVENT"),
