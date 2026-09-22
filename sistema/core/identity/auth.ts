@@ -109,6 +109,30 @@ export async function authenticate(
   };
 }
 
+/**
+ * Cuántas cuentas activas tienen un permiso, sin contar a `exceptUserId`.
+ *
+ * Se usa para no dejar el nivel sin nadie que pueda administrarlo. Un sistema donde una
+ * operación de rutina puede eliminar al último administrador es un sistema que tarde o temprano
+ * hay que destrabar por consola.
+ */
+export function countUsersWithPermission(
+  db: Db,
+  permission: string,
+  exceptUserId?: string
+): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(DISTINCT u.id) AS total
+       FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+       JOIN role_permissions rp ON rp.role_id = ur.role_id
+       WHERE u.active = 1 AND rp.permission_code = ? AND u.id <> ?`
+    )
+    .get(permission, exceptUserId ?? "") as unknown as { total: number };
+  return Number(row.total);
+}
+
 export function can(user: AuthenticatedUser | null, permission: string): boolean {
   return Boolean(user?.permissions.includes(permission));
 }

@@ -65,7 +65,7 @@ npm run dev
 - `http://localhost:3000` — lista de niveles
 - `http://localhost:3000/primaria` — pantalla pública del QR
 - `http://localhost:3000/primaria/ingresar` — acceso al panel
-- `http://localhost:3000/primaria/admin` — panel del día y padrón
+- `http://localhost:3000/primaria/admin` — panel del día, padrón, licencias, usuarios y configuración
 
 Cada nivel se agrega repitiendo `nivel:crear` con otro `--slug`. El comando es idempotente:
 volver a correrlo actualiza el catálogo de reglas sin duplicar nada ni pisar la configuración que
@@ -98,9 +98,10 @@ npm run demo:sqlite       # dos niveles reales, aislamiento y saldos
 npm run demo:asistencia   # flujo completo de marcación
 npm run demo:identidad    # autenticación, permisos y aislamiento entre niveles
 npm run demo:licencias    # cómputo de días y cuotas
+npm run demo:configuracion # validación de parámetros y resguardo del último administrador
 ```
 
-Las cinco corren contra bases temporales y no tocan `data/`.
+Las seis corren contra bases temporales y no tocan `data/`.
 
 ## El panel
 
@@ -147,8 +148,12 @@ sobrevivir a los despliegues.
 
 ## Lo que todavía no está
 
-Del módulo de administración están el panel del día, el padrón y las licencias. Faltan la
-configuración del nivel, los usuarios y roles, la clasificación de salidas intermedias, la
-marcación manual excepcional y las vacaciones con su escala de derecho.
+Del módulo de administración están el panel del día, el padrón, las licencias, los usuarios y la
+configuración. Faltan la clasificación de salidas intermedias, la marcación manual excepcional y
+las vacaciones con su escala de derecho.
+
+La pantalla de configuración se genera desde el registro de definiciones de `core/config`: cada
+parámetro declara su tipo, su ámbito, su valor por defecto y su validación en un solo lugar.
+Agregar uno nuevo es agregar un `defineSetting`; la pantalla no cambia.
 
 Los niveles y las sedes se siguen creando por línea de comandos.

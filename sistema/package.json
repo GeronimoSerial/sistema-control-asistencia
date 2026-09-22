@@ -18,7 +18,8 @@
     "persona:crear": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/cargar-persona.ts",
     "usuario:crear": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/crear-usuario.ts",
     "demo:identidad": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-identidad.ts",
-    "demo:licencias": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-licencias.ts"
+    "demo:licencias": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-licencias.ts",
+    "demo:configuracion": "node --experimental-strip-types --import ./scripts/alias-loader.mjs scripts/demo-configuracion.ts"
   },
   "dependencies": {
     "next": "^15.5.2",

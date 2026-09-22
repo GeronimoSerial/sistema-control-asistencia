@@ -12,7 +12,7 @@
 
 import { isValidTimeZone } from "@/core/platform/time";
 
-export type SettingScope = "ORGANIZATION" | "LOCATION";
+export type SettingScope = "LEVEL" | "LOCATION";
 
 export type SettingType = "string" | "integer" | "number" | "boolean" | "enum" | "timezone" | "color";
 
@@ -149,7 +149,7 @@ export const SETTING_KEYS = {
 
 defineSetting({
   key: SETTING_KEYS.brandName,
-  type: "string", scope: "ORGANIZATION", default: "", maxLength: 120,
+  type: "string", scope: "LEVEL", default: "", maxLength: 120,
   group: "Identidad institucional",
   label: "Nombre del organismo",
   help: "Encabeza las pantallas públicas y el panel de administración.",
@@ -157,7 +157,7 @@ defineSetting({
 
 defineSetting({
   key: SETTING_KEYS.brandKicker,
-  type: "string", scope: "ORGANIZATION", default: "", maxLength: 160,
+  type: "string", scope: "LEVEL", default: "", maxLength: 160,
   group: "Identidad institucional",
   label: "Dependencia superior",
   help: "Línea que se muestra sobre el nombre. Puede quedar vacía.",
@@ -165,28 +165,28 @@ defineSetting({
 
 defineSetting({
   key: SETTING_KEYS.brandFooter,
-  type: "string", scope: "ORGANIZATION", default: "", maxLength: 200,
+  type: "string", scope: "LEVEL", default: "", maxLength: 200,
   group: "Identidad institucional",
   label: "Pie de página",
 });
 
 defineSetting({
   key: SETTING_KEYS.appTitle,
-  type: "string", scope: "ORGANIZATION", default: "Control de Asistencia", maxLength: 80,
+  type: "string", scope: "LEVEL", default: "Control de Asistencia", maxLength: 80,
   group: "Identidad institucional",
   label: "Título de la aplicación",
 });
 
 defineSetting({
   key: SETTING_KEYS.brandAccent,
-  type: "color", scope: "ORGANIZATION", default: "#1d4ed8",
+  type: "color", scope: "LEVEL", default: "#1d4ed8",
   group: "Identidad institucional",
   label: "Color institucional",
 });
 
 defineSetting({
   key: SETTING_KEYS.timeZone,
-  type: "timezone", scope: "ORGANIZATION", default: "UTC",
+  type: "timezone", scope: "LEVEL", default: "UTC",
   group: "Regional",
   label: "Zona horaria",
   help: "Determina la fecha de la jornada, los horarios y el cierre automático.",
@@ -194,7 +194,7 @@ defineSetting({
 
 defineSetting({
   key: SETTING_KEYS.locale,
-  type: "string", scope: "ORGANIZATION", default: "es", maxLength: 12,
+  type: "string", scope: "LEVEL", default: "es", maxLength: 12,
   group: "Regional",
   label: "Formato regional",
   help: "Cómo se muestran fechas y horas. Por ejemplo es-AR, es-CL, pt-BR.",
@@ -224,21 +224,21 @@ defineSetting({
 
 defineSetting({
   key: SETTING_KEYS.pinLength,
-  type: "integer", scope: "ORGANIZATION", default: 4, min: 4, max: 10,
+  type: "integer", scope: "LEVEL", default: 4, min: 4, max: 10,
   group: "Marcación",
   label: "Longitud del PIN",
 });
 
 defineSetting({
   key: SETTING_KEYS.temporaryPinDays,
-  type: "integer", scope: "ORGANIZATION", default: 7, min: 1, max: 90,
+  type: "integer", scope: "LEVEL", default: 7, min: 1, max: 90,
   group: "Marcación",
   label: "Vigencia del PIN provisorio (días)",
 });
 
 defineSetting({
   key: SETTING_KEYS.personIdLabel,
-  type: "string", scope: "ORGANIZATION", default: "Documento", maxLength: 40,
+  type: "string", scope: "LEVEL", default: "Documento", maxLength: 40,
   group: "Personas",
   label: "Etiqueta del documento de identidad",
   help: "DNI, CI, RUT, CPF… según el país. El núcleo sólo guarda una cadena.",
@@ -246,7 +246,7 @@ defineSetting({
 
 defineSetting({
   key: SETTING_KEYS.sessionHours,
-  type: "integer", scope: "ORGANIZATION", default: 12, min: 1, max: 24,
+  type: "integer", scope: "LEVEL", default: 12, min: 1, max: 24,
   group: "Seguridad",
   label: "Duración de la sesión (horas)",
 });
