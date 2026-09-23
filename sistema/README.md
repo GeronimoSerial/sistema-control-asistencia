@@ -111,10 +111,11 @@ npm run demo:configuracion # validación de parámetros y resguardo del último 
 npm run demo:gestion      # marcación manual, clasificación de salidas y vacaciones
 npm run demo:correcciones # corrección y anulación de movimientos, y migración de bases viejas
 npm run demo:plataforma   # alta de niveles, operadores y sedes
+npm run demo:cierre       # cierre automático: lo que cierra, lo que no, y la reparación
 npm run verify:acciones   # ningún archivo "use server" exporta algo que no sea una función async
 ```
 
-Las nueve primeras corren contra bases temporales y no tocan `data/`. `verify:acciones` no toca la
+Las diez primeras corren contra bases temporales y no tocan `data/`. `verify:acciones` no toca la
 base: lee los archivos de `app/` y adelanta un error que, si no, aparecería recién al abrir la
 pantalla en el navegador.
 
@@ -190,6 +191,31 @@ Lo demás se acomoda solo. La tardanza, la compensación y el cierre salen de `r
 lee los movimientos vigentes, así que no hay ningún número que haya que ajustar a mano. Los
 intervalos siguen a sus movimientos: corregir una salida mueve el inicio del intervalo, anular un
 reingreso lo vuelve a abrir y borra su clasificación, anular una salida anula el intervalo entero.
+
+## El cierre automático
+
+Las jornadas que quedan abiertas se cierran imputando la salida al horario previsto. **No corre
+solo:** hay que programar el guion en el servidor, una vez por día después del último horario de
+salida.
+
+```bash
+npm run jornadas:cerrar
+```
+
+**La salida imputada nunca cae antes del último movimiento.** Si alguien reingresó después de su
+horario, o entró después del fin de su horario, la jornada no se cierra: queda marcada con el
+motivo y aparece en el panel de Hoy para que alguien la resuelva desde Registros. Es deliberado —
+el sistema no sabe a qué hora se fue esa persona, y cualquier hora que invente es un dato falso en
+el legajo de alguien.
+
+Si una versión anterior ya dejó jornadas con salidas automáticas apiladas o fuera de orden:
+
+```bash
+npm run jornadas:cerrar -- --reparar
+```
+
+Anula las salidas automáticas que sobran —no borra nada, quedan con su motivo— y deja esas
+jornadas abiertas otra vez, que es como estaban antes de que el cierre las tocara.
 
 ## Antes de ponerlo en producción
 

@@ -278,7 +278,7 @@ console.log("\n9. Cierre automático");
 markEntry(ctx, { personId: "p2", at: new Date("2026-09-21T11:00:00Z") });
 // Quedan dos jornadas abiertas de p2: la del lunes y la del martes, que entró 08:12 y no salió.
 const cerradas = autoCloseOpenDays(ctx, new Date("2026-09-22T20:00:00Z"));
-check("se cerraron las dos jornadas abiertas", cerradas, 2);
+check("se cerraron las dos jornadas abiertas", cerradas, { closed: 2, blocked: 0 });
 
 const diaCerrado = db.prepare(
   `SELECT exit_at, exit_type FROM attendance_days WHERE person_id='p2' AND work_date='2026-09-21'`
@@ -287,7 +287,7 @@ const diaCerrado = db.prepare(
 check("la salida se imputa al horario previsto", diaCerrado.exit_at, "2026-09-21T17:00:00.000Z");
 check("queda marcada como automática", diaCerrado.exit_type, "AUTO");
 check("volver a correrlo no cierra nada más",
-  autoCloseOpenDays(ctx, new Date("2026-09-22T20:00:00Z")), 0);
+  autoCloseOpenDays(ctx, new Date("2026-09-22T20:00:00Z")), { closed: 0, blocked: 0 });
 
 /* ================================================================== *
  * 10. La zona horaria del nivel manda
@@ -298,7 +298,7 @@ console.log("\n10. Zona horaria por nivel");
 const ctxChile: LevelContext = { ...ctx, timeZone: "America/Santiago" };
 markEntry(ctx, { personId: "p5", at: new Date("2026-07-14T12:00:00Z") });  // martes, 09:00 en AR
 const cerradasChile = autoCloseOpenDays(ctxChile, new Date("2026-07-15T23:00:00Z"));
-check("cierra la jornada con la zona del contexto", cerradasChile, 1);
+check("cierra la jornada con la zona del contexto", cerradasChile, { closed: 1, blocked: 0 });
 
 const diaChile = db.prepare(
   `SELECT work_date, exit_at FROM attendance_days WHERE person_id='p5' AND work_date LIKE '2026-07%'`

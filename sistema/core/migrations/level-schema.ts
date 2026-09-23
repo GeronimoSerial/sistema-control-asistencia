@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS attendance_days (
   pending_minutes        INTEGER NOT NULL DEFAULT 0,
   exit_type              TEXT CHECK (exit_type IN ('EMPLOYEE','AUTO','ADMIN')),
   auto_close_processed_at TEXT,
+  auto_close_blocked_reason TEXT,
   admin_note             TEXT,
   created_at             TEXT NOT NULL,
   updated_at             TEXT NOT NULL,
@@ -381,6 +382,7 @@ const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: "attendance_events", column: "corrected_at", definition: "TEXT" },
   { table: "attendance_events", column: "correction_reason", definition: "TEXT" },
   { table: "attendance_intervals", column: "voided_at", definition: "TEXT" },
+  { table: "attendance_days", column: "auto_close_blocked_reason", definition: "TEXT" },
 ];
 
 function applyAddedColumns(db: import("node:sqlite").DatabaseSync): void {

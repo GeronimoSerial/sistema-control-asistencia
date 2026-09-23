@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { sessionWith } from "@/lib/session";
 import { formatTime, zonedParts } from "@/core/platform/time";
-import { pendingIntervals } from "@/core/attendance/service";
+import Link from "next/link";
+import { pendingIntervals, blockedAutoCloses } from "@/core/attendance/service";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,10 @@ export default async function HoyPage({
 
   const pendientes = pendingIntervals(session.resolved.context, date);
 
+  // Jornadas que el cierre automático no pudo resolver. No dependen de la fecha elegida: son un
+  // pendiente del nivel, y si no se muestran siempre nadie se entera de que existen.
+  const trabadas = blockedAutoCloses(session.resolved.context);
+
   const conLicencia = rows.filter((r) => r.absence_code).length;
   const presentes = rows.filter((r) => r.entry_at).length;
   const ausentes = rows.filter((r) => !r.entry_at && !r.absence_code).length;
@@ -121,6 +126,31 @@ export default async function HoyPage({
         <div className="notice warn" style={{ marginBottom: 16 }}>
           Hay {abiertas} {abiertas === 1 ? "jornada abierta" : "jornadas abiertas"} sin salida
           registrada. Si corresponde, el cierre automático las va a imputar al horario previsto.
+        </div>
+      )}
+
+      {trabadas.length > 0 && (
+        <div className="notice bad" style={{ marginBottom: 16 }}>
+          <strong>
+            {trabadas.length === 1
+              ? "Una jornada no se pudo cerrar automáticamente"
+              : `${trabadas.length} jornadas no se pudieron cerrar automáticamente`}
+          </strong>
+          <div style={{ fontSize: 14, marginTop: 4 }}>
+            El último movimiento es posterior al horario de salida, así que el sistema no puede
+            imputar la salida sin inventar una hora. Resolvelas a mano desde Registros.
+          </div>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 14 }}>
+            {trabadas.slice(0, 8).map((row) => (
+              <li key={row.id}>
+                <Link href={`/${nivel}/admin/registros?fecha=${row.work_date}`}>
+                  {row.work_date}
+                </Link>{" "}
+                · {row.person}
+              </li>
+            ))}
+            {trabadas.length > 8 && <li className="muted">y {trabadas.length - 8} más</li>}
+          </ul>
         </div>
       )}
 

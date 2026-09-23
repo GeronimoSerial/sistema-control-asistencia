@@ -457,7 +457,8 @@ export function recomputeDay(ctx: LevelContext, dayId: number): void {
   ctx.db
     .prepare(
       `UPDATE attendance_days SET entry_at=?, exit_at=?, late_minutes=?, early_minutes=?,
-       compensation_minutes=?, pending_minutes=?, exit_type=?, updated_at=? WHERE id=?`
+       compensation_minutes=?, pending_minutes=?, exit_type=?, auto_close_blocked_reason=NULL,
+       updated_at=? WHERE id=?`
     )
     .run(
       entry.occurred_at, last.occurred_at, closure.lateMinutes, closure.earlyMinutes,
@@ -853,8 +854,41 @@ export function voidMovement(
  * Cierre automático
  * ------------------------------------------------------------------ */
 
-export function autoCloseOpenDays(ctx: LevelContext, at: Date = new Date()): number {
-  if (ctx.policy.autoCloseMode === "NONE") return 0;
+/** Por qué el cierre automático no pudo cerrar una jornada. */
+export const AUTO_CLOSE_BLOCKED: Record<string, string> = {
+  LAST_MOVEMENT_AFTER_SCHEDULED_END:
+    "El último movimiento es posterior al horario de salida, así que no se puede imputar la salida al horario previsto.",
+};
+
+export type AutoCloseReport = {
+  /** Jornadas cerradas en esta corrida. */
+  closed: number;
+  /** Jornadas que el cierre no puede resolver y quedan esperando a una persona. */
+  blocked: number;
+};
+
+/**
+ * Cierra las jornadas que quedaron abiertas, imputando la salida al horario previsto.
+ *
+ * **La salida imputada nunca puede caer antes del último movimiento.** Es la regla que faltaba, y
+ * su ausencia producía dos daños distintos, los dos irreparables desde la aplicación:
+ *
+ * - Si alguien reingresaba después de su horario y se olvidaba de salir, el `AUTO_EXIT` al
+ *   horario previsto se ordenaba *entre* medio de los movimientos. `recomputeDay` mira el último
+ *   movimiento para saber si el día cerró, seguía viendo el reingreso, y la jornada quedaba
+ *   abierta —así que la corrida siguiente insertaba otro `AUTO_EXIT`, y la siguiente otro—.
+ * - Si alguien entraba después del fin de su horario, el `AUTO_EXIT` quedaba *antes* de la
+ *   entrada, y `sequenceProblem` rechazaba para siempre cualquier corrección o anulación de ese
+ *   día.
+ *
+ * Cuando la salida teórica no alcanza, la jornada no se cierra: se marca con el motivo y espera.
+ * Es deliberado. La máquina no sabe a qué hora se fue alguien que seguía marcando después de su
+ * horario, y cualquier instante que invente es un dato falso en el legajo de una persona. Que
+ * quede abierta y visible obliga a que alguien la mire, que es lo correcto; para eso están la
+ * marcación manual y la corrección de movimientos.
+ */
+export function autoCloseOpenDays(ctx: LevelContext, at: Date = new Date()): AutoCloseReport {
+  if (ctx.policy.autoCloseMode === "NONE") return { closed: 0, blocked: 0 };
 
   const today = localDate(ctx, at);
   const nowMinutes = localMinutes(ctx, at);
@@ -866,7 +900,13 @@ export function autoCloseOpenDays(ctx: LevelContext, at: Date = new Date()): num
     )
     .all(today) as unknown as DayRow[];
 
+  const setBlocked = ctx.db.prepare(
+    `UPDATE attendance_days SET auto_close_blocked_reason = ?, updated_at = ? WHERE id = ?`
+  );
+
   let closed = 0;
+  let blocked = 0;
+
   for (const row of rows) {
     const last = lastMovement(ctx, row.id);
     if (last && ["EXIT", "AUTO_EXIT"].includes(last.event_type)) continue;
@@ -884,6 +924,13 @@ export function autoCloseOpenDays(ctx: LevelContext, at: Date = new Date()): num
     // zona del nivel. El sistema anterior concatenaba `-03:00`, lo que fallaba con horario de
     // verano.
     const theoreticalExit = zonedDateTimeToUtc(ctx.timeZone, row.work_date, row.scheduled_end);
+
+    if (last && theoreticalExit.toISOString() <= last.occurred_at) {
+      setBlocked.run("LAST_MOVEMENT_AFTER_SCHEDULED_END", new Date().toISOString(), row.id);
+      blocked += 1;
+      continue;
+    }
+
     ctx.db
       .prepare(
         `INSERT INTO attendance_events (attendance_day_id, person_id, event_type, occurred_at, metadata)
@@ -899,11 +946,44 @@ export function autoCloseOpenDays(ctx: LevelContext, at: Date = new Date()): num
       );
 
     ctx.db
-      .prepare(`UPDATE attendance_days SET auto_close_processed_at = ? WHERE id = ?`)
+      .prepare(
+        `UPDATE attendance_days SET auto_close_processed_at = ?, auto_close_blocked_reason = NULL
+         WHERE id = ?`
+      )
       .run(new Date().toISOString(), row.id);
 
     recomputeDay(ctx, row.id);
     closed += 1;
   }
-  return closed;
+  return { closed, blocked };
+}
+
+/** Jornadas que el cierre automático dejó pendientes de una decisión humana. */
+export function blockedAutoCloses(ctx: LevelContext): {
+  id: number;
+  person_id: string;
+  person: string;
+  work_date: string;
+  scheduled_end: string;
+  reason: string;
+}[] {
+  return ctx.db
+    .prepare(
+      `SELECT d.id, d.person_id, d.work_date, d.scheduled_end,
+              d.auto_close_blocked_reason AS reason,
+              p.last_name || ', ' || p.first_name AS person
+       FROM attendance_days d
+       JOIN people p ON p.id = d.person_id
+       WHERE d.auto_close_blocked_reason IS NOT NULL AND d.exit_at IS NULL
+       ORDER BY d.work_date DESC, p.last_name`
+    )
+    .all()
+    .map((row) => ({ ...row })) as unknown as {
+    id: number;
+    person_id: string;
+    person: string;
+    work_date: string;
+    scheduled_end: string;
+    reason: string;
+  }[];
 }
