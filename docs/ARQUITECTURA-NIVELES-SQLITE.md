@@ -168,6 +168,12 @@ de archivo.
 
 ## Qué falta
 
-La sesión de usuario y el módulo de administración. Los niveles, las sedes y los administradores
-se crean hoy por línea de comandos (`npm run nivel:crear`); las personas y sus horarios todavía
-no tienen pantalla de carga.
+Nada del módulo de administración: está completo, y los niveles, las sedes, los administradores,
+las personas y sus horarios se cargan desde pantalla. El único paso que sigue en consola es el
+alta del primer operador de plataforma (`npm run operador:crear`), a propósito: una pantalla de
+alta abierta mientras no haya ninguno sería una puerta sin llave entre el despliegue y el primer
+ingreso.
+
+Lo que queda es lo de afuera del sistema —reportes, respaldos, arranque como servicio— y los
+hallazgos de la revisión. El estado actualizado está en
+[`ESTADO-DEL-REFACTOR.md`](./ESTADO-DEL-REFACTOR.md).

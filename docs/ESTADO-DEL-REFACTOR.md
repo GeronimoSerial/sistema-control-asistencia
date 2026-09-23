@@ -1,10 +1,16 @@
 # Estado de la rama `refactor/agnostic-core`
 
-Documento de lectura para quien revise esta rama. Explica qué se está haciendo, qué garantías
-tiene, cómo verificarlo y qué decisiones quedan pendientes.
+Documento de lectura para quien revise esta rama. Qué hay, qué garantías tiene, cómo verificarlo
+y qué decisiones quedan pendientes.
 
-El plan completo está en [`REFACTOR-AGNOSTICO.md`](./REFACTOR-AGNOSTICO.md). Este documento es
-el resumen operativo: qué hay hoy en la rama y qué mirar para revisarla.
+**Lo primero, porque cambia cómo leer todo lo demás:** la rama empezó como un refactor del sistema
+actual y terminó siendo **una aplicación nueva, en la carpeta `sistema/`**. La aplicación que está
+en producción, en la raíz del repositorio, no fue modificada. El único commit que la tocaba fue
+revertido dentro de esta misma rama.
+
+El plan original está en [`REFACTOR-AGNOSTICO.md`](./REFACTOR-AGNOSTICO.md) y la arquitectura de lo
+que efectivamente se construyó, en
+[`ARQUITECTURA-NIVELES-SQLITE.md`](./ARQUITECTURA-NIVELES-SQLITE.md).
 
 ---
 
@@ -13,8 +19,8 @@ el resumen operativo: qué hay hoy en la rama y qué mirar para revisarla.
 El sistema funciona, pero está construido a medida de un organismo: las reglas del Estatuto del
 Docente de Corrientes, la escala de vacaciones, la tolerancia de ingreso y la zona horaria están
 escritas como código, no guardadas como datos. Cambiar un tope de días implica editar un archivo,
-compilar y desplegar. Y la base de datos tiene, literalmente, una restricción que impide que
-exista más de una oficina:
+compilar y desplegar. Y la base tiene, literalmente, una restricción que impide que exista más de
+una oficina:
 
 ```sql
 CREATE TABLE office_settings (
@@ -23,69 +29,82 @@ CREATE TABLE office_settings (
 )
 ```
 
-El objetivo es separar **el motor** de **las reglas**, para poder después construir un módulo de
+El objetivo era separar **el motor** de **las reglas** para poder construir después un módulo de
 administración que gestione organismos, configuración, catálogos y permisos sin tocar el
 repositorio.
+
+## Por qué cambió el camino
+
+El plan original enchufaba el motor nuevo en la aplicación existente y después migraba a
+multi-inquilino agregando `organization_id` a las tablas de dominio. Esa fase 2 era **la única con
+riesgo de pérdida de datos**, y era inevitable mientras todo viviera en una sola base.
+
+Al definirse que la administración iba a ser **por nivel** —primaria, secundaria— y que cada uno
+correría sobre SQLite, esa fase desapareció: si cada nivel es un archivo, el aislamiento es una
+propiedad del sistema de archivos y no de una columna que hay que agregar y rellenar. No hay
+`organization_id` en ninguna tabla porque no hace falta.
+
+El commit que enchufaba el motor en la aplicación de producción quedó revertido. Consecuencia
+directa y deliberada: **la aplicación actual sigue exactamente como estaba**, con los problemas
+que se describen más abajo incluidos.
 
 ---
 
 ## Garantías de esta rama
 
-Lo más importante para revisarla con tranquilidad:
-
-1. **No cambia el comportamiento de la aplicación.** Todo camino nuevo tiene respaldo al anterior.
-   Si se despliega esta rama sin correr la instalación, el sistema responde exactamente igual que
-   hoy.
-2. **No modifica ninguna tabla existente.** La migración `0001` sólo crea tablas nuevas. No hay
-   `ALTER` ni `UPDATE` sobre `employees`, `attendance_days`, `leave_records` ni ninguna otra.
-3. **Es reversible.** Revertir los commits deja el sistema como estaba. Las tablas nuevas quedan
-   huérfanas pero no molestan a nada.
-4. **Los cálculos están verificados.** Hay un script que reimplementa la lógica anterior tal cual
-   y compara resultados: 875 comprobaciones, todas equivalentes.
-
-Para saber qué motor respondió en cada request, las respuestas de `leave-balance` y
-`vacation-status` traen un campo `source`: `"LEGACY"` (lógica anterior) o `"RULES"` (motor
-declarativo).
+1. **No cambia el comportamiento de la aplicación en producción.** No hay un solo archivo
+   modificado fuera de `sistema/`, `docs/` y `.gitignore`.
+2. **No toca ninguna base existente.** El sistema nuevo crea sus propios archivos SQLite.
+3. **Los cálculos están verificados contra los actuales.** Un script reimplementa la lógica
+   anterior tal cual y compara: **875 comprobaciones, todas equivalentes**.
+4. **Es descartable.** Borrar la carpeta `sistema/` deja el repositorio como estaba.
 
 ---
 
-## Qué hay, commit por commit
+## Qué hay hoy
 
-### 1. `refactor: núcleo agnóstico, tenancy y reglas declarativas (fases 0-1)`
+### El núcleo, en `sistema/core/`
 
-Construye el motor. No toca código existente: sólo agrega carpetas nuevas.
+Lógica de dominio pura: no importa nada de `next` ni de `app/`. Por eso las pruebas corren con
+Node directo, sin servidor y sin base de datos externa.
 
-- `core/platform/time.ts` — tiempo con zona horaria explícita.
-- `core/config/` — registro tipado de parámetros, con ámbito, valor por defecto y validación.
-- `core/tenancy/` — organizaciones y contexto por request.
-- `core/absence/quota.ts` — evaluador de cuotas por tramos.
-- `core/absence/entitlement.ts` — escalas de derecho por antigüedad.
-- `core/attendance/policy.ts` — política de asistencia declarativa.
-- `core/migrations/` — runner versionado con tabla `schema_migrations`.
-- `packs/ar-corrientes-dge/pack.json` — marca, catálogo del Estatuto Docente con sus cuotas,
-  escala de vacaciones, política y roles, como datos.
-- `scripts/verify-rules.ts` — la verificación de equivalencia.
+- `absence/` — evaluador de cuotas por tramos y escalas de derecho por antigüedad.
+- `attendance/` — política declarativa, servicio de marcación, corrección de movimientos, sedes.
+- `config/` — registro tipado de parámetros, con ámbito, valor por defecto y validación.
+- `identity/` — autenticación, roles y permisos.
+- `tenancy/` — registro de niveles, alta completa de un nivel y operadores de plataforma.
+- `platform/` — SQLite, tiempo con zona horaria, geodistancia, hashes.
+- `migrations/` — esquema de la base de un nivel, con migración aditiva para las bases en uso.
 
-**Qué mirar:** `core/absence/quota.ts` y el `pack.json`. Ahí se ve el cambio conceptual.
+### Las reglas, en `sistema/packs/`
 
-### 2. `feat: conectar el núcleo agnóstico en modo un organismo`
+`ar-corrientes-dge/pack.json` tiene 19 tipos de licencia, 27 tramos de cuota, la escala de
+vacaciones, la política de asistencia y los roles. Como datos. Cambiar de organismo es cambiar de
+paquete.
 
-Enchufa el motor. Es donde está el cambio funcional.
+### La aplicación, en `sistema/app/`
 
-- `app/api/platform/install/route.ts` — endpoint protegido con `SETUP_TOKEN` que corre las
-  migraciones, da de alta el organismo y aplica el pack. Idempotente.
-- `app/api/admin/leave-balance/route.ts` — reescrito.
-- `app/api/admin/vacation-status/route.ts` — reescrito.
-- `lib/attendance.ts` y `app/api/admin/records/route.ts` — usan la política.
-- `lib/migrations.ts` — se quitan dos `UPDATE`.
+**Pantalla pública por nivel:** QR que se renueva solo, marcación con PIN, vinculación de
+dispositivo y geocerca.
 
-**Qué mirar:** el diff de `leave-balance`, y el del `lib/migrations.ts`, que corrige un problema
-real descrito más abajo.
+**Panel por nivel** (`/{nivel}/admin`): panel del día, padrón con credenciales, registros con
+marcación manual y corrección de movimientos, clasificación de salidas intermedias, licencias,
+vacaciones, usuarios y permisos, sedes, configuración.
 
-### 3. `chore: agregar .gitignore y guía de desarrollo local`
+**Área de plataforma** (`/plataforma`): alta, suspensión y reactivación de niveles, y sus
+operadores. Cuentas separadas de las de cada nivel y sin acceso a ningún panel.
 
-El repositorio no tenía `.gitignore`. Se agrega uno, se deja de versionar
-`tsconfig.tsbuildinfo` (artefacto de compilación) y se suma `docs/DESARROLLO-LOCAL.md`.
+---
+
+## Las dos decisiones que atraviesan todo
+
+**Los eventos son la única fuente de verdad.** `attendance_days` es una proyección que siempre se
+recalcula con la misma función, `recomputeDay()`. En el sistema actual el cálculo de tardanza está
+escrito tres veces —en el registro de entrada, en el recálculo del panel y en la marcación
+manual— y una de las copias ni siquiera lee la configuración.
+
+**Nada se borra.** Un movimiento mal cargado se anula, con autor y motivo, y deja de contar. Una
+corrección guarda la hora original. El historial queda completo.
 
 ---
 
@@ -116,29 +135,65 @@ Un solo evaluador consume esas filas. Los cuatro `if` desaparecen y los topes pa
 editables desde una pantalla.
 
 Lo mismo con la tolerancia: «hasta 15 minutos no hay atraso, pero si se supera se computa todo
-desde la hora prevista» es ahora `latenessMode = FULL_FROM_SCHEDULED` con tolerancia 15. La regla
-inversa, que es la habitual en otros organismos, es `GRACE_ONLY`. Y la escala 20/25/30/35 son
-cuatro filas de una tabla.
+desde la hora prevista» es `latenessMode = FULL_FROM_SCHEDULED` con tolerancia 15. La regla
+inversa, habitual en otros organismos, es `GRACE_ONLY`. Y la escala 20/25/30/35 son cuatro filas de
+una tabla.
+
+**Además, el modelo por evento ahora funciona de verdad.** En el sistema actual las ventanas por
+evento (Art. 8 b/c, Art. 13 bis) se alimentan con el acumulado anual, porque `leave_records` no
+identifica el hecho que origina la licencia. El esquema nuevo lo identifica, así que dos episodios
+distintos del mismo artículo ya no se suman entre sí.
 
 ---
 
-## Tres problemas encontrados en el camino
+## Cómo verificar
 
-Son independientes del refactor y conviene mirarlos aparte.
+Todo corre sin servidor y sin base de datos externa, desde `sistema/`:
+
+```bash
+npm install
+npm run verify:rules      # 875 comprobaciones de equivalencia con la lógica actual
+npm run demo:sqlite       # dos niveles reales, aislamiento y saldos
+npm run demo:asistencia   # flujo completo de marcación
+npm run demo:identidad    # autenticación, permisos y aislamiento entre niveles
+npm run demo:licencias    # cómputo de días y cuotas
+npm run demo:configuracion
+npm run demo:gestion
+npm run demo:correcciones # corrección y anulación de movimientos
+npm run demo:plataforma   # alta de niveles, operadores y sedes
+npm run demo:cierre       # cierre automático y reparación
+npm run verify:acciones
+```
+
+`verify:rules` debe terminar en `✓ 875 comprobaciones, todas equivalentes.`
+
+Para levantarlo y usarlo, ver [`sistema/README.md`](../sistema/README.md) y
+[`DESARROLLO-LOCAL.md`](./DESARROLLO-LOCAL.md).
+
+**Qué mirar para revisar:** `core/absence/quota.ts` y el `pack.json`, que son el cambio
+conceptual; `core/attendance/service.ts`, que es el corazón del sistema; y
+`core/migrations/level-schema.ts`, que es el modelo de datos completo en un archivo.
+
+---
+
+## Cuatro problemas del sistema actual
+
+Encontrados durante este trabajo. **Los cuatro siguen presentes en producción**, porque el commit
+que corregía los dos primeros quedó revertido junto con el resto de los cambios sobre la
+aplicación existente.
 
 ### 1. La configuración se revierte sola
 
-`ensureV13Schema()` corre en cada request y contenía:
+`ensureV13Schema()` corre en cada request y contiene:
 
 ```sql
 UPDATE office_settings SET lateness_tolerance_minutes = 15 WHERE id = 1 AND lateness_tolerance_minutes <> 15;
 UPDATE office_settings SET absence_count_start_date = '2026-09-12' WHERE id = 1 AND absence_count_start_date IS DISTINCT FROM '2026-09-12';
 ```
 
-Si un administrador cambia la tolerancia desde la pantalla de configuración, la siguiente
-instancia fría de serverless se la revierte. El commit 2 quita ambas sentencias: la tolerancia
-pasó a ser parte de la política del organismo, y la fecha de cómputo sólo se establece si nunca
-se fijó.
+Si un administrador cambia la tolerancia desde la pantalla de configuración, la siguiente instancia
+fría de serverless se la revierte. **Es un arreglo de dos líneas** y no depende de nada de esta
+rama.
 
 ### 2. El cierre automático tiene un error de zona horaria
 
@@ -149,8 +204,7 @@ return `${dateString}T${hhmm}:00-03:00`;
 ```
 
 En Argentina funciona porque no hay horario de verano. En cualquier zona que lo tenga, el cierre
-automático queda desfasado una hora durante medio año. `core/platform/time.ts` calcula el offset
-real para esa fecha.
+queda desfasado una hora durante medio año.
 
 ### 3. Hay datos personales reales versionados
 
@@ -159,58 +213,36 @@ real para esa fecha.
 `lib/historical-confirmed-2026.ts` (9 KB) suman unos 370 KB más de datos personales.
 
 Cualquiera con acceso al repositorio tiene el padrón completo con documentos. **Esto requiere una
-decisión del dueño**, porque sacarlos de ahora en más no borra el historial de Git: si se quiere
-eliminarlos del todo hay que reescribir la historia del repositorio, lo que obliga a que todos
-los clones se rehagan.
+decisión del dueño**, porque sacarlos de ahora en más no borra el historial de Git: para
+eliminarlos del todo hay que reescribir la historia, lo que obliga a rehacer todos los clones.
+
+### 4. La validación de sede no soporta un segundo edificio
+
+Todo el flujo de marcación resuelve la sede como «la primera activa». Con una sola funciona por
+casualidad; con dos, los agentes del segundo edificio quedarían siempre fuera del radio y el
+mensaje diría «estás fuera del área», que no explica nada. En el sistema nuevo el código QR lleva
+consigo de qué sede salió.
 
 ---
 
-## Cómo verificar
+## Qué falta en el sistema nuevo
 
-Sin base de datos, la equivalencia de los cálculos:
+El módulo de administración está completo y el sistema se puede usar de punta a punta. Lo que
+queda, en orden de urgencia:
 
-```
-npm run verify:rules
-```
-
-Debe terminar en `✓ 875 comprobaciones, todas equivalentes.`
-
-Con una base de prueba, el sistema completo: ver [`DESARROLLO-LOCAL.md`](./DESARROLLO-LOCAL.md).
-
-Para activar el motor nuevo en un entorno ya desplegado:
-
-1. Definir `SETUP_TOKEN` (cadena larga y aleatoria) en las variables de entorno.
-2. `POST /api/platform/install` con la cabecera `x-setup-token`.
-3. Definir `DEFAULT_ORGANIZATION_SLUG` con el slug devuelto y redesplegar.
-4. Comprobar que `leave-balance` empieza a responder `source: "RULES"` y que los números
-   coinciden con los anteriores.
-
-Si algo no cierra, basta con quitar `DEFAULT_ORGANIZATION_SLUG`: el sistema vuelve a
-`source: "LEGACY"` sin desplegar nada.
-
----
-
-## Qué falta
-
-| Fase | Estado |
+| Tema | Estado |
 |---|---|
-| 0. Migraciones versionadas y verificación | Hecho |
-| 1. Plataforma y tiempo agnóstico | Hecho |
-| 1.5 Motor conectado en un solo organismo | Hecho |
-| Marca y textos desde configuración | Pendiente — toca siete pantallas, es mecánico |
-| 2. Multi-tenant (`organization_id` y backfill) | **Pendiente — única fase con riesgo de pérdida de datos** |
-| 3. Permisos granulares y roles dinámicos | Modelado, sin conectar |
-| 4-5. Reglas y política desde la administración | Modelado, sin conectar |
-| 6. Padrón y datos históricos fuera del repositorio | Pendiente — requiere decisión |
-| 7. Módulo de administración | Pendiente |
+| Cadena de marcación: QR público, PIN sondeable, sin límite de intentos | **Pendiente — antes de cargar datos reales** |
+| Validaciones de licencias: solapamiento, choque con marcaciones, tope por hecho | Pendiente |
+| Saldo previo a guardar una licencia | No funciona — la ruta responde 403 por la ruta de la cookie |
+| Cambio de contraseña propio y exigencia de cambio inicial | Pendiente |
+| Las salidas intermedias clasificadas no afectan ningún cálculo | Decisión de diseño pendiente |
+| Versionado de la política, para que las jornadas viejas no se recalculen con reglas nuevas | Decisión de diseño pendiente |
+| Reportes y exportación | Pendiente |
+| Despliegue: build standalone, respaldos, cierre automático programado | Pendiente |
 
-### Limitación conocida
-
-Las ventanas por evento (Art. 8 b/c, Art. 13 bis) se alimentan hoy con el acumulado anual, porque
-`leave_records` no identifica el hecho que origina la licencia. Es exactamente lo que hacía el
-sistema antes, así que no hay cambio de comportamiento, pero el modelo ya soporta el cómputo por
-evento: cuando los registros tengan un identificador de evento, sólo cambia el objeto de consumo
-que se le pasa al evaluador.
+La revisión completa, con cada hallazgo verificado corriendo código y su reproducción paso a paso,
+está en el documento de revisión del proyecto.
 
 ---
 
@@ -218,8 +250,13 @@ que se le pasa al evaluador.
 
 1. **Datos personales en el historial de Git.** Sacarlos de ahora en más, o reescribir la
    historia. Lo segundo es más completo y más invasivo.
-2. **Cuándo encarar la fase 2.** Es la que agrega `organization_id` a las tablas de dominio y
-   migra los datos existentes. Necesita respaldo verificado y ensayo sobre una copia.
-3. **Si la regla de tolerancia debe seguir siendo la actual.** Hoy quedó tal cual estaba
+2. **Qué pasa con el sistema actual.** El nuevo no lo reemplaza automáticamente: son dos
+   aplicaciones distintas en el mismo repositorio. Si el nuevo va a reemplazarlo, hace falta
+   decidir cómo se migran los datos existentes; si van a convivir, hace falta decidir qué hace cada
+   uno. Mientras tanto, los cuatro problemas de arriba siguen en producción.
+3. **Si la regla de tolerancia debe seguir siendo la actual.** Quedó tal cual estaba
    (`FULL_FROM_SCHEDULED`, 15 minutos), pero ahora es configurable y conviene confirmar que es lo
    que corresponde normativamente.
+4. **El PIN de 4 dígitos.** Hoy identifica por sí solo a la persona dentro de un espacio de 10 000
+   combinaciones. Subirlo a 6, o pedir documento además del PIN, cambia cómo marca la gente todos
+   los días: es una decisión de uso, no sólo técnica.
